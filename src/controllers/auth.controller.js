@@ -1,0 +1,70 @@
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const { getDb } = require("../config/db");
+const env = require("../config/env");
+
+const ROLE_ROUTES = {
+  admin: "/admin/dashboard",
+  "user manager": "/user-manager/dashboard",
+  "ticket manager": "/ticket-manager/dashboard",
+};
+
+async function login(req, res) {
+  const { email, password, category } = req.body;
+
+  if (!email || !password || !category) {
+    return res.status(400).json({ message: "Email, password and category are required" });
+  }
+
+  if (!ROLE_ROUTES[category]) {
+    return res.status(400).json({ message: "Invalid category selected" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    const isHashed = /^\$2[aby]\$/.test(user.password);
+    const passwordMatch = isHashed
+      ? await bcrypt.compare(password, user.password)
+      : password === user.password;
+
+    if (!passwordMatch) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    if (user.role !== category) {
+      return res.status(403).json({ message: "You don't have access to this role" });
+    }
+
+    const token = jwt.sign(
+      { id: user._id.toString(), email: user.email, role: user.role },
+      env.secretKey,
+      { expiresIn: "7d" },
+    );
+
+    const isProduction = env.nodeEnv === "production";
+    res.setHeader(
+      "Set-Cookie",
+      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax${isProduction ? "; Secure" : ""}`,
+    );
+
+    const redirectTo = ROLE_ROUTES[user.role] || "/admin/dashboard";
+    return res.status(200).json({ success: true, role: user.role, redirectTo });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+function logout(req, res) {
+  res.setHeader("Set-Cookie", "token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax");
+  return res.status(200).json({ success: true });
+}
+
+module.exports = { login, logout };
