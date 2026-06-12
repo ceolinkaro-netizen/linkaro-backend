@@ -305,7 +305,7 @@ async function signupProvider(req, res) {
     zip,
     password,
     gender,
-    category,
+    categories,
     profileImage,
     cnicFrontImage,
     cnicBackImage,
@@ -322,7 +322,8 @@ async function signupProvider(req, res) {
     !zip ||
     !password ||
     !gender ||
-    !category
+    !Array.isArray(categories) ||
+    categories.length === 0
   ) {
     return res.status(400).json({ message: "All fields are required" });
   }
@@ -348,7 +349,7 @@ async function signupProvider(req, res) {
     return res.status(400).json({ message: "Gender must be Male or Female" });
   }
 
-  if (!VALID_CATEGORIES.includes(category)) {
+  if (!categories.every((c) => VALID_CATEGORIES.includes(c))) {
     return res.status(400).json({ message: "Invalid category" });
   }
 
@@ -391,7 +392,7 @@ async function signupProvider(req, res) {
       address: { street, city, zip },
       cnic,
       gender,
-      category,
+      categories,
       password: hashedPassword,
       role: "provider",
       profileImage,

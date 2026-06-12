@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const env = require("../../config/env");
+const { VALID_CATEGORIES } = require("../../constants/categories");
 
 async function me(req, res) {
   try {
@@ -229,7 +230,12 @@ async function updateProfile(req, res) {
     // Provider-only fields
     if (user.role === "provider") {
       if (fields.email) update.email = fields.email.toLowerCase().trim();
-      if (fields.category) update.category = fields.category;
+      if (Array.isArray(fields.categories) && fields.categories.length > 0) {
+        if (!fields.categories.every((c) => VALID_CATEGORIES.includes(c))) {
+          return res.status(400).json({ message: "Invalid category" });
+        }
+        update.categories = fields.categories;
+      }
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;
       if (fields.cnicBackImage) update.cnicBackImage = fields.cnicBackImage;
     }
