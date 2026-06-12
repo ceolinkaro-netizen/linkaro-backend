@@ -193,6 +193,29 @@ async function updateProfile(req, res) {
         : `+92${fields.phone}`;
     }
 
+    // Uniqueness checks (excluding this user, scoped to their role)
+    if (update.cnic && update.cnic !== user.cnic) {
+      const existingCnic = await db.collection("users").findOne({
+        _id: { $ne: user._id },
+        cnic: update.cnic,
+        role: user.role,
+      });
+      if (existingCnic) {
+        return res.status(409).json({ message: "CNIC is already registered" });
+      }
+    }
+
+    if (update.phone && update.phone !== user.phone) {
+      const existingPhone = await db.collection("users").findOne({
+        _id: { $ne: user._id },
+        phone: update.phone,
+        role: user.role,
+      });
+      if (existingPhone) {
+        return res.status(409).json({ message: "Phone number is already registered" });
+      }
+    }
+
     // Address fields
     if (fields.street || fields.city || fields.zip) {
       const existing = user.address || {};
