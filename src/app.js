@@ -4,13 +4,10 @@ const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 const routes = require("./routes");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
-const env = require("./config/env");
 
 const app = express();
 
-if (env.nodeEnv !== "production") {
-  app.use(morgan("dev"));
-}
+app.use(morgan("dev"));
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
