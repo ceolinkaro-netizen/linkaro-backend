@@ -9,6 +9,9 @@ const transporter = nodemailer.createTransport({
     user: env.email.user,
     pass: env.email.pass,
   },
+  // Some hosts (e.g. Render) resolve smtp.gmail.com to an IPv6 address they
+  // can't actually route, causing ENETUNREACH. Force IPv4 to avoid that.
+  family: 4,
 });
 
 async function sendEmail({ to, subject, html, text }) {
