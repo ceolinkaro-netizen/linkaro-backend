@@ -1,27 +1,31 @@
-const nodemailer = require("nodemailer");
 const env = require("../config/env");
 
-const transporter = nodemailer.createTransport({
-  host: env.email.host,
-  port: env.email.port,
-  secure: env.email.secure,
-  auth: {
-    user: env.email.user,
-    pass: env.email.pass,
-  },
-  // Some hosts (e.g. Render) resolve smtp.gmail.com to an IPv6 address they
-  // can't actually route, causing ENETUNREACH. Force IPv4 to avoid that.
-  family: 4,
-});
+const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
+// Sent over HTTPS rather than raw SMTP — hosts like Render block outbound SMTP ports.
 async function sendEmail({ to, subject, html, text }) {
-  return transporter.sendMail({
-    from: `"Linkaro" <${env.email.user}>`,
-    to,
-    subject,
-    text: text || subject,
-    html,
+  const response = await fetch(BREVO_API_URL, {
+    method: "POST",
+    headers: {
+      "api-key": env.brevo.apiKey,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: env.brevo.senderName, email: env.brevo.senderEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text || subject,
+    }),
   });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Brevo API error (${response.status}): ${errorBody}`);
+  }
+
+  return response.json();
 }
 
 function baseTemplate(content) {

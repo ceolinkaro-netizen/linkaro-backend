@@ -6,11 +6,9 @@ module.exports = {
   mongodbUri: process.env.MONGODB_URI,
   secretKey: process.env.SECRET_KEY,
   cronSecret: process.env.CRON_SECRET,
-  email: {
-    host: process.env.EMAIL_HOST,
-    port: Number(process.env.EMAIL_PORT) || 587,
-    secure: process.env.EMAIL_SECURE === "true",
-    user: process.env.EMAIL,
-    pass: process.env.PASSWORD,
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY,
+    senderEmail: process.env.EMAIL,
+    senderName: "Linkaro",
   },
 };
