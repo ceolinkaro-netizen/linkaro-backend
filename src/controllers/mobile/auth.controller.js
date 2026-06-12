@@ -32,7 +32,7 @@ async function checkAvailability(req, res) {
       return res.status(409).json({ message: "CNIC is already registered" });
     }
 
-    if (phone && role === "provider") {
+    if (phone) {
       const existingPhone = await db
         .collection("users")
         .findOne({ phone: `+92${phone}`, role });
@@ -223,14 +223,18 @@ async function sendOtp(req, res) {
 }
 
 async function signupConsumer(req, res) {
-  const { fullName, email, cnic, password, profileImage } = req.body;
+  const { fullName, phone, email, cnic, password, profileImage } = req.body;
 
-  if (!fullName || !email || !cnic || !password) {
-    return res.status(400).json({ message: "Full name, email, CNIC and password are required" });
+  if (!fullName || !phone || !email || !cnic || !password) {
+    return res.status(400).json({ message: "Full name, phone, email, CNIC and password are required" });
   }
 
   if (!EMAIL_REGEX.test(email)) {
     return res.status(400).json({ message: "Invalid email address" });
+  }
+
+  if (String(phone).length !== 10) {
+    return res.status(400).json({ message: "Phone must be 10 digits (without +92)" });
   }
 
   if (String(cnic).length !== 13) {
@@ -262,10 +266,18 @@ async function signupConsumer(req, res) {
       return res.status(409).json({ message: "CNIC is already registered" });
     }
 
+    const existingPhone = await db
+      .collection("users")
+      .findOne({ phone: `+92${phone}`, role: "consumer" });
+    if (existingPhone) {
+      return res.status(409).json({ message: "Phone number is already registered" });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await db.collection("users").insertOne({
       name: fullName,
+      phone: `+92${phone}`,
       email: email.toLowerCase().trim(),
       cnic,
       password: hashedPassword,
