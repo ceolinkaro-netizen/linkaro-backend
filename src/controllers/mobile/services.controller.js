@@ -64,4 +64,60 @@ async function postService(req, res) {
   }
 }
 
-module.exports = { myServices, postService };
+async function updateService(req, res) {
+  const { serviceId, title, category, description, availability, location, images } = req.body;
+
+  if (!serviceId || !title || !category || !description || !availability || !location) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    const db = await getDb();
+    const providerId = new ObjectId(req.decoded.id);
+
+    const service = await db.collection("providerServices").findOne({
+      _id: new ObjectId(serviceId),
+      providerId,
+    });
+    if (!service) {
+      return res.status(404).json({ message: "Service not found" });
+    }
+
+    const user = await db.collection("users").findOne({ _id: providerId });
+    const categories = Array.isArray(user?.categories) ? user.categories : [];
+    if (!categories.includes(category)) {
+      return res.status(400).json({ message: "Selected category is not in your profile" });
+    }
+
+    const existing = await db.collection("providerServices").findOne({
+      providerId,
+      category,
+      _id: { $ne: new ObjectId(serviceId) },
+    });
+    if (existing) {
+      return res.status(409).json({ message: "You already have a service for this category" });
+    }
+
+    await db.collection("providerServices").updateOne(
+      { _id: new ObjectId(serviceId) },
+      {
+        $set: {
+          title: title.trim(),
+          category,
+          description: description.trim(),
+          availability,
+          location: location.trim(),
+          images: Array.isArray(images) ? images : [],
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Update service error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+module.exports = { myServices, postService, updateService };
