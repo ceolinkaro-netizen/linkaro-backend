@@ -2,6 +2,7 @@ const express = require("express");
 const { verifyMobileToken } = require("../../middleware/mobileAuth");
 const {
   me,
+  listProviders,
   profileImage,
   subscription,
   updateBadgeSubscription,
@@ -15,6 +16,7 @@ const {
 const router = express.Router();
 
 router.get("/me", verifyMobileToken, me);
+router.get("/providers", verifyMobileToken, listProviders);
 // profile-image performs its own token verification (it cross-checks the `id` query param)
 router.get("/profile-image", profileImage);
 router.post("/subscription", verifyMobileToken, subscription);

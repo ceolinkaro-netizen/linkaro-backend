@@ -34,7 +34,7 @@ async function postTicket(req, res) {
       description: description.trim(),
       priority,
       images: Array.isArray(images) ? images : [],
-      status: "pending",
+      status: "ongoing",
       createdAt: new Date(),
     });
 
