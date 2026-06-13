@@ -44,7 +44,11 @@ async function listProviders(req, res) {
 
     const city = consumer.address?.city;
 
-    const query = { role: "provider", registrationStatus: true };
+    const query = {
+      role: "provider",
+      registrationStatus: true,
+      subscriptionStatus: "active",
+    };
     if (city) {
       query["address.city"] = { $regex: `^${city}$`, $options: "i" };
     }
