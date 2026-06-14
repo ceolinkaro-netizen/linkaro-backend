@@ -189,13 +189,41 @@ async function getMessages(req, res) {
     const hasMore = docs.length > limit;
     const page = docs.slice(0, limit).reverse();
 
+    const otherId = conversation.participants
+      .find((p) => p.toString() !== myId)
+      .toString();
+    const otherLastRead = conversation.lastRead?.[otherId]
+      ? new Date(conversation.lastRead[otherId])
+      : null;
+
+    const messages = page.map((m) => ({
+      ...m,
+      read:
+        m.senderId.toString() === myId &&
+        otherLastRead != null &&
+        m.createdAt <= otherLastRead,
+    }));
+
+    const hadUnread = (conversation.unreadCount?.[myId] ?? 0) > 0;
+    const now = new Date();
     await db.collection("conversations").updateOne(
       { _id: new ObjectId(conversationId) },
-      { $set: { [`unreadCount.${myId}`]: 0 } }
+      { $set: { [`unreadCount.${myId}`]: 0, [`lastRead.${myId}`]: now } }
     );
     await touchLastSeen(db, myId);
 
-    return res.status(200).json({ success: true, messages: page, hasMore });
+    if (hadUnread) {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`conv:${conversationId}`).emit("messages_read", {
+          conversationId,
+          userId: myId,
+          readAt: now.toISOString(),
+        });
+      }
+    }
+
+    return res.status(200).json({ success: true, messages, hasMore });
   } catch (error) {
     console.error("Get messages error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -275,7 +303,7 @@ async function sendMessage(req, res) {
 
     await touchLastSeen(db, myId);
 
-    const savedMessage = { ...messageDoc, _id: result.insertedId };
+    const savedMessage = { ...messageDoc, _id: result.insertedId, read: false };
 
     const io = req.app.get("io");
     if (io) {

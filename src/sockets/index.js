@@ -91,10 +91,21 @@ function initSocket(server) {
 
     socket.on("mark_read", async ({ conversationId } = {}) => {
       if (!conversationId || !ObjectId.isValid(conversationId)) return;
+      const readAt = new Date();
       await db.collection("conversations").updateOne(
         { _id: new ObjectId(conversationId) },
-        { $set: { [`unreadCount.${userId}`]: 0 } }
+        {
+          $set: {
+            [`unreadCount.${userId}`]: 0,
+            [`lastRead.${userId}`]: readAt,
+          },
+        }
       );
+      socket.to(`conv:${conversationId}`).emit("messages_read", {
+        conversationId,
+        userId,
+        readAt: readAt.toISOString(),
+      });
     });
 
     socket.on("disconnect", async () => {
