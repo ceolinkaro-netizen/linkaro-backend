@@ -220,6 +220,10 @@ async function getMessages(req, res) {
           userId: myId,
           readAt: now.toISOString(),
         });
+        io.to(`user:${myId}`).emit("conversation_update", {
+          conversationId,
+          unreadCount: 0,
+        });
       }
     }
 

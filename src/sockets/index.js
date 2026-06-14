@@ -80,12 +80,13 @@ function initSocket(server) {
       socket.leave(`conv:${conversationId}`);
     });
 
-    socket.on("typing", ({ conversationId, isTyping } = {}) => {
+    socket.on("typing", ({ conversationId, isTyping, kind } = {}) => {
       if (!conversationId || !ObjectId.isValid(conversationId)) return;
       socket.to(`conv:${conversationId}`).emit("typing", {
         conversationId,
         userId,
         isTyping: !!isTyping,
+        kind: kind === "voice" ? "voice" : "text",
       });
     });
 
@@ -105,6 +106,10 @@ function initSocket(server) {
         conversationId,
         userId,
         readAt: readAt.toISOString(),
+      });
+      io.to(`user:${userId}`).emit("conversation_update", {
+        conversationId,
+        unreadCount: 0,
       });
     });
 
