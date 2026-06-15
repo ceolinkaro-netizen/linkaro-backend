@@ -4,6 +4,20 @@ const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const env = require("../../config/env");
 const { VALID_CATEGORIES } = require("../../constants/categories");
+const { isUserOnline } = require("../../sockets");
+
+const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+
+function withOnlineStatus(user) {
+  const { lastSeenAt, ...rest } = user;
+  const lastSeen = lastSeenAt ? new Date(lastSeenAt).getTime() : 0;
+  return {
+    ...rest,
+    isOnline:
+      isUserOnline(user._id.toString()) ||
+      Date.now() - lastSeen <= ONLINE_WINDOW_MS,
+  };
+}
 
 async function me(req, res) {
   try {
@@ -64,11 +78,15 @@ async function listProviders(req, res) {
           badgeSubscriptionStatus: 1,
           rating: 1,
           reviewsCount: 1,
+          phone: 1,
+          lastSeenAt: 1,
         },
       })
       .toArray();
 
-    return res.status(200).json({ success: true, providers });
+    return res
+      .status(200)
+      .json({ success: true, providers: providers.map(withOnlineStatus) });
   } catch (error) {
     console.error("List providers error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -95,6 +113,8 @@ async function providerDetail(req, res) {
           badgeSubscriptionStatus: 1,
           rating: 1,
           reviewsCount: 1,
+          phone: 1,
+          lastSeenAt: 1,
         },
       }
     );
@@ -109,7 +129,9 @@ async function providerDetail(req, res) {
       .sort({ createdAt: -1 })
       .toArray();
 
-    return res.status(200).json({ success: true, provider, services });
+    return res
+      .status(200)
+      .json({ success: true, provider: withOnlineStatus(provider), services });
   } catch (error) {
     console.error("Get provider detail error:", error);
     return res.status(500).json({ message: "Internal server error" });

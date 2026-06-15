@@ -23,9 +23,95 @@ async function myJobs(req, res) {
       .sort({ createdAt: -1 })
       .toArray();
 
-    return res.status(200).json({ success: true, jobs });
+    const providerIds = [
+      ...new Set(
+        jobs
+          .filter((job) => job.assignedProviderId)
+          .map((job) => job.assignedProviderId.toString())
+      ),
+    ].map((id) => new ObjectId(id));
+
+    let providerMap = new Map();
+    if (providerIds.length) {
+      const providers = await db
+        .collection("users")
+        .find({ _id: { $in: providerIds } })
+        .project({ name: 1, profileImage: 1, rating: 1, categories: 1, phone: 1 })
+        .toArray();
+      providerMap = new Map(providers.map((p) => [p._id.toString(), p]));
+    }
+
+    const result = jobs.map((job) => {
+      const provider = job.assignedProviderId
+        ? providerMap.get(job.assignedProviderId.toString())
+        : null;
+      if (!provider) return job;
+      return {
+        ...job,
+        assignedTo: provider.name ?? null,
+        providerImage: provider.profileImage ?? null,
+        providerRating: provider.rating ?? null,
+        providerBusiness: Array.isArray(provider.categories)
+          ? provider.categories.join(", ")
+          : null,
+        providerPhone: provider.phone ?? null,
+      };
+    });
+
+    return res.status(200).json({ success: true, jobs: result });
   } catch (error) {
     console.error("Get my jobs error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function assignProvider(req, res) {
+  const { id } = req.params;
+  const { providerId } = req.body;
+
+  if (!ObjectId.isValid(id) || !providerId || !ObjectId.isValid(providerId)) {
+    return res
+      .status(400)
+      .json({ message: "Valid job id and providerId are required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const job = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+    if (job.userId.toString() !== req.decoded.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (job.status !== "open") {
+      return res.status(400).json({ message: "Job is not open for assignment" });
+    }
+
+    const provider = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(providerId), role: "provider" });
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found" });
+    }
+
+    await db.collection("jobs").updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: "in_progress",
+          assignedProviderId: new ObjectId(providerId),
+          assignedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Assign provider error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -172,4 +258,4 @@ async function nearbyJobs(req, res) {
   }
 }
 
-module.exports = { myJobs, postJob, nearbyJobs };
+module.exports = { myJobs, postJob, nearbyJobs, assignProvider };

@@ -4,6 +4,7 @@ const {
   myJobs,
   postJob,
   nearbyJobs,
+  assignProvider,
 } = require("../../controllers/mobile/jobs.controller");
 
 const router = express.Router();
@@ -11,5 +12,6 @@ const router = express.Router();
 router.get("/my-jobs", verifyMobileToken, myJobs);
 router.post("/post-job", verifyMobileToken, postJob);
 router.get("/nearby-jobs", verifyMobileToken, nearbyJobs);
+router.post("/:id/assign", verifyMobileToken, assignProvider);
 
 module.exports = router;
