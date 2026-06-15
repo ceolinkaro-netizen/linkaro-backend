@@ -46,6 +46,12 @@ async function ensureIndexes() {
   );
 
   await jobs.createIndex({ geo: "2dsphere" });
+
+  const messages = db.collection("messages");
+  await messages.createIndex({ conversationId: 1, createdAt: -1 });
+
+  const conversations = db.collection("conversations");
+  await conversations.createIndex({ participants: 1, updatedAt: -1 });
 }
 
 module.exports = { getDb, getClientPromise, ensureIndexes };
