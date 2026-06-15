@@ -2,18 +2,7 @@ const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const { isUserOnline } = require("../../sockets");
 
-const EARTH_RADIUS_KM = 6371;
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
-
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 async function myJobs(req, res) {
   try {
@@ -129,6 +118,13 @@ async function assignProvider(req, res) {
       }
     );
 
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`category:${job.category}`).emit("job_unavailable", {
+        jobId: job._id.toString(),
+      });
+    }
+
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Assign provider error:", error);
@@ -161,6 +157,13 @@ async function cancelJob(req, res) {
     }
 
     await db.collection("jobs").deleteOne({ _id: new ObjectId(id) });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`category:${job.category}`).emit("job_unavailable", {
+        jobId: job._id.toString(),
+      });
+    }
 
     return res.status(200).json({ success: true });
   } catch (error) {
@@ -268,6 +271,7 @@ async function postJob(req, res) {
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       jobDoc.latitude = lat;
       jobDoc.longitude = lng;
+      jobDoc.geo = { type: "Point", coordinates: [lng, lat] };
     }
 
     const result = await db.collection("jobs").insertOne(jobDoc);
@@ -275,6 +279,40 @@ async function postJob(req, res) {
     await db
       .collection("users")
       .updateOne({ _id: new ObjectId(req.decoded.id) }, { $inc: { totalJobs: 1 } });
+
+    if (jobDoc.geo) {
+      const io = req.app.get("io");
+      if (io) {
+        const consumer = await db
+          .collection("users")
+          .findOne(
+            { _id: new ObjectId(req.decoded.id) },
+            { projection: { name: 1, profileImage: 1, lastSeenAt: 1 } }
+          );
+        const lastSeenAt = consumer?.lastSeenAt
+          ? new Date(consumer.lastSeenAt).getTime()
+          : 0;
+
+        io.to(`category:${category}`).emit("job_posted", {
+          _id: result.insertedId,
+          title: jobDoc.title,
+          category: jobDoc.category,
+          problem: jobDoc.problem,
+          location: jobDoc.location,
+          latitude: jobDoc.latitude,
+          longitude: jobDoc.longitude,
+          scheduledTime: jobDoc.scheduledTime,
+          status: jobDoc.status,
+          createdAt: jobDoc.createdAt,
+          consumerId: jobDoc.userId,
+          consumerName: consumer?.name ?? null,
+          consumerProfileImage: consumer?.profileImage ?? null,
+          consumerIsOnline:
+            isUserOnline(req.decoded.id) ||
+            Date.now() - lastSeenAt <= ONLINE_WINDOW_MS,
+        });
+      }
+    }
 
     return res.status(201).json({ success: true, jobId: result.insertedId });
   } catch (error) {
@@ -322,23 +360,20 @@ async function nearbyJobs(req, res) {
       ? provider.categories
       : [];
 
-    const rawJobs = await db
+    const inRange = await db
       .collection("jobs")
-      .find({
-        status: "open",
-        category: { $in: categories },
-        latitude: { $exists: true },
-        longitude: { $exists: true },
-      })
+      .aggregate([
+        {
+          $geoNear: {
+            near: { type: "Point", coordinates: [lng, lat] },
+            distanceField: "distanceMeters",
+            maxDistance: radiusKm * 1000,
+            spherical: true,
+            query: { status: "open", category: { $in: categories } },
+          },
+        },
+      ])
       .toArray();
-
-    const inRange = rawJobs
-      .map((job) => ({
-        ...job,
-        distanceKm: haversineKm(lat, lng, job.latitude, job.longitude),
-      }))
-      .filter((job) => job.distanceKm <= radiusKm)
-      .sort((a, b) => a.distanceKm - b.distanceKm);
 
     const consumerIds = [
       ...new Set(inRange.map((job) => job.userId.toString())),
@@ -371,7 +406,7 @@ async function nearbyJobs(req, res) {
         scheduledTime: job.scheduledTime,
         status: job.status,
         createdAt: job.createdAt,
-        distanceKm: job.distanceKm,
+        distanceKm: job.distanceMeters / 1000,
         consumerId: job.userId,
         consumerName: consumer?.name ?? null,
         consumerProfileImage: consumer?.profileImage ?? null,

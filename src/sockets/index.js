@@ -65,6 +65,18 @@ function initSocket(server) {
       await broadcastPresence(io, db, userId, true);
     }
 
+    socket.on("join_provider_rooms", async () => {
+      const user = await db
+        .collection("users")
+        .findOne(
+          { _id: new ObjectId(userId) },
+          { projection: { categories: 1, role: 1 } }
+        );
+      if (user?.role !== "provider") return;
+      const categories = Array.isArray(user.categories) ? user.categories : [];
+      categories.forEach((category) => socket.join(`category:${category}`));
+    });
+
     socket.on("join_conversation", async ({ conversationId } = {}) => {
       if (!conversationId || !ObjectId.isValid(conversationId)) return;
       const conversation = await db

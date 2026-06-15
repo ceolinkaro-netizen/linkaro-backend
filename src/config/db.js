@@ -23,4 +23,29 @@ async function getDb() {
   return connectedClient.db("linkaro");
 }
 
-module.exports = { getDb, getClientPromise };
+// Ensures the geospatial index used for nearby-job lookups exists, and
+// backfills the GeoJSON `geo` field on any legacy job documents that only
+// have plain `latitude`/`longitude` fields.
+async function ensureIndexes() {
+  const db = await getDb();
+  const jobs = db.collection("jobs");
+
+  await jobs.updateMany(
+    {
+      latitude: { $exists: true },
+      longitude: { $exists: true },
+      geo: { $exists: false },
+    },
+    [
+      {
+        $set: {
+          geo: { type: "Point", coordinates: ["$longitude", "$latitude"] },
+        },
+      },
+    ]
+  );
+
+  await jobs.createIndex({ geo: "2dsphere" });
+}
+
+module.exports = { getDb, getClientPromise, ensureIndexes };
