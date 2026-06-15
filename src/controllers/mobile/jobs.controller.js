@@ -38,16 +38,29 @@ async function myJobs(req, res) {
       const providers = await db
         .collection("users")
         .find({ _id: { $in: providerIds } })
-        .project({ name: 1, profileImage: 1, rating: 1, categories: 1, phone: 1 })
+        .project({
+          name: 1,
+          profileImage: 1,
+          rating: 1,
+          categories: 1,
+          phone: 1,
+          jobsCompleted: 1,
+          lastSeenAt: 1,
+        })
         .toArray();
       providerMap = new Map(providers.map((p) => [p._id.toString(), p]));
     }
+
+    const now = Date.now();
 
     const result = jobs.map((job) => {
       const provider = job.assignedProviderId
         ? providerMap.get(job.assignedProviderId.toString())
         : null;
       if (!provider) return job;
+      const lastSeenAt = provider.lastSeenAt
+        ? new Date(provider.lastSeenAt).getTime()
+        : 0;
       return {
         ...job,
         assignedTo: provider.name ?? null,
@@ -57,6 +70,11 @@ async function myJobs(req, res) {
           ? provider.categories.join(", ")
           : null,
         providerPhone: provider.phone ?? null,
+        providerJobsCompleted: provider.jobsCompleted ?? 0,
+        providerIsOnline:
+          isUserOnline(job.assignedProviderId.toString()) ||
+          now - lastSeenAt <= ONLINE_WINDOW_MS,
+        completedBy: job.status === "completed" ? provider.name ?? null : null,
       };
     });
 
@@ -147,6 +165,78 @@ async function cancelJob(req, res) {
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Cancel job error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function completeJob(req, res) {
+  const { id } = req.params;
+  const { rating, review } = req.body;
+
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Valid job id is required" });
+  }
+
+  const ratingNum = Number(rating);
+  if (!Number.isFinite(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    return res
+      .status(400)
+      .json({ message: "A rating between 1 and 5 is required" });
+  }
+  if (!review || !review.trim()) {
+    return res.status(400).json({ message: "A review is required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const job = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+    if (job.userId.toString() !== req.decoded.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (job.status !== "in_progress") {
+      return res
+        .status(400)
+        .json({ message: "Only in-progress jobs can be completed" });
+    }
+
+    await db.collection("jobs").updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: "completed",
+          completedAt: new Date(),
+          rating: ratingNum,
+          review: review.trim(),
+        },
+      }
+    );
+
+    if (job.assignedProviderId) {
+      const provider = await db
+        .collection("users")
+        .findOne(
+          { _id: job.assignedProviderId },
+          { projection: { rating: 1, jobsCompleted: 1 } }
+        );
+
+      const prevCount = provider?.jobsCompleted ?? 0;
+      const prevRating = provider?.rating ?? 0;
+      const newRating = (prevRating * prevCount + ratingNum) / (prevCount + 1);
+
+      await db.collection("users").updateOne(
+        { _id: job.assignedProviderId },
+        { $set: { rating: newRating }, $inc: { jobsCompleted: 1 } }
+      );
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Complete job error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -304,4 +394,11 @@ async function nearbyJobs(req, res) {
   }
 }
 
-module.exports = { myJobs, postJob, nearbyJobs, assignProvider, cancelJob };
+module.exports = {
+  myJobs,
+  postJob,
+  nearbyJobs,
+  assignProvider,
+  cancelJob,
+  completeJob,
+};

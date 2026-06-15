@@ -163,7 +163,18 @@ async function profileImage(req, res) {
 
     const user = await db
       .collection("users")
-      .findOne({ _id: new ObjectId(id) }, { projection: { profileImage: 1, totalJobs: 1, name: 1, email: 1 } });
+      .findOne(
+        { _id: new ObjectId(id) },
+        {
+          projection: {
+            profileImage: 1,
+            totalJobs: 1,
+            jobsCompleted: 1,
+            name: 1,
+            email: 1,
+          },
+        }
+      );
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -175,6 +186,7 @@ async function profileImage(req, res) {
       email: user.email || null,
       profileImage: user.profileImage || null,
       totalJobs: user.totalJobs ?? 0,
+      jobsCompleted: user.jobsCompleted ?? 0,
     });
   } catch (error) {
     console.error("Profile image error:", error);
