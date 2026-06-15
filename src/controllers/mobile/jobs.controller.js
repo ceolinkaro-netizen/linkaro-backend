@@ -1,7 +1,9 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
+const { isUserOnline } = require("../../sockets");
 
 const EARTH_RADIUS_KM = 6371;
+const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -116,6 +118,39 @@ async function assignProvider(req, res) {
   }
 }
 
+async function cancelJob(req, res) {
+  const { id } = req.params;
+
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Valid job id is required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const job = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+    if (job.userId.toString() !== req.decoded.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    if (job.status !== "open") {
+      return res
+        .status(400)
+        .json({ message: "Only pending jobs can be cancelled" });
+    }
+
+    await db.collection("jobs").deleteOne({ _id: new ObjectId(id) });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Cancel job error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 async function postJob(req, res) {
   const { title, category, problem, location, scheduledTime, latitude, longitude } =
     req.body;
@@ -222,20 +257,27 @@ async function nearbyJobs(req, res) {
     const consumers = await db
       .collection("users")
       .find({ _id: { $in: consumerIds } })
-      .project({ name: 1, profileImage: 1 })
+      .project({ name: 1, profileImage: 1, lastSeenAt: 1 })
       .toArray();
     const consumerMap = new Map(
       consumers.map((c) => [c._id.toString(), c])
     );
 
+    const now = Date.now();
+
     const jobs = inRange.map((job) => {
       const consumer = consumerMap.get(job.userId.toString());
+      const lastSeenAt = consumer?.lastSeenAt
+        ? new Date(consumer.lastSeenAt).getTime()
+        : 0;
       return {
         _id: job._id,
         title: job.title,
         category: job.category,
         problem: job.problem,
         location: job.location,
+        latitude: job.latitude,
+        longitude: job.longitude,
         scheduledTime: job.scheduledTime,
         status: job.status,
         createdAt: job.createdAt,
@@ -243,6 +285,10 @@ async function nearbyJobs(req, res) {
         consumerId: job.userId,
         consumerName: consumer?.name ?? null,
         consumerProfileImage: consumer?.profileImage ?? null,
+        consumerIsOnline: consumer
+          ? isUserOnline(job.userId.toString()) ||
+            now - lastSeenAt <= ONLINE_WINDOW_MS
+          : false,
       };
     });
 
@@ -258,4 +304,4 @@ async function nearbyJobs(req, res) {
   }
 }
 
-module.exports = { myJobs, postJob, nearbyJobs, assignProvider };
+module.exports = { myJobs, postJob, nearbyJobs, assignProvider, cancelJob };
