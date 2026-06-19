@@ -5,6 +5,7 @@ const { getDb } = require("../../config/db");
 const env = require("../../config/env");
 const { VALID_CATEGORIES } = require("../../constants/categories");
 const { isUserOnline } = require("../../sockets");
+const { deleteManyFromCloudinary } = require("../../lib/cloudinary");
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 
@@ -109,6 +110,7 @@ async function providerDetail(req, res) {
           name: 1,
           profileImage: 1,
           category: 1,
+          about: 1,
           address: 1,
           badgeSubscriptionStatus: 1,
           rating: 1,
@@ -395,6 +397,9 @@ async function updateProfile(req, res) {
         }
         update.category = fields.category;
       }
+      if (typeof fields.about === "string") {
+        update.about = fields.about.trim();
+      }
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;
       if (fields.cnicBackImage) update.cnicBackImage = fields.cnicBackImage;
     }
@@ -406,6 +411,17 @@ async function updateProfile(req, res) {
     await db
       .collection("users")
       .updateOne({ _id: new ObjectId(req.decoded.id) }, { $set: update });
+
+    // Replaced images are now orphaned in Cloudinary — clean them up. Fired
+    // without awaiting so the response isn't held up by the delete calls.
+    const replacedImages = [
+      "profileImage",
+      "cnicFrontImage",
+      "cnicBackImage",
+    ]
+      .filter((field) => update[field] && update[field] !== user[field])
+      .map((field) => user[field]);
+    deleteManyFromCloudinary(replacedImages);
 
     return res.status(200).json({ success: true, message: "Profile updated successfully" });
   } catch (error) {

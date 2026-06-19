@@ -1,5 +1,6 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
+const { deleteManyFromCloudinary } = require("../../lib/cloudinary");
 
 async function myServices(req, res) {
   try {
@@ -95,6 +96,8 @@ async function updateService(req, res) {
       return res.status(409).json({ message: "You already have a service for this category" });
     }
 
+    const newImages = Array.isArray(images) ? images : [];
+
     await db.collection("providerServices").updateOne(
       { _id: new ObjectId(serviceId) },
       {
@@ -103,11 +106,17 @@ async function updateService(req, res) {
           category,
           description: description.trim(),
           location: location.trim(),
-          images: Array.isArray(images) ? images : [],
+          images: newImages,
           updatedAt: new Date(),
         },
       }
     );
+
+    // Any image dropped from the array during this edit is now orphaned.
+    const removedImages = (service.images || []).filter(
+      (url) => !newImages.includes(url)
+    );
+    deleteManyFromCloudinary(removedImages);
 
     return res.status(200).json({ success: true });
   } catch (error) {

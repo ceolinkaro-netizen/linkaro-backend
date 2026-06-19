@@ -11,4 +11,9 @@ module.exports = {
     senderEmail: process.env.EMAIL,
     senderName: "Linkaro",
   },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || "dhqlxau24",
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
 };
