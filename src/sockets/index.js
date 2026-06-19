@@ -70,11 +70,10 @@ function initSocket(server) {
         .collection("users")
         .findOne(
           { _id: new ObjectId(userId) },
-          { projection: { categories: 1, role: 1 } }
+          { projection: { category: 1, role: 1 } }
         );
-      if (user?.role !== "provider") return;
-      const categories = Array.isArray(user.categories) ? user.categories : [];
-      categories.forEach((category) => socket.join(`category:${category}`));
+      if (user?.role !== "provider" || !user.category) return;
+      socket.join(`category:${user.category}`);
     });
 
     socket.on("join_conversation", async ({ conversationId } = {}) => {

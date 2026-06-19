@@ -46,6 +46,19 @@ async function ensureIndexes() {
   );
 
   await jobs.createIndex({ geo: "2dsphere" });
+
+  // Providers used to support multiple categories; backfill the new
+  // single-value `category` field from the old `categories` array.
+  const users = db.collection("users");
+  await users.updateMany(
+    {
+      role: "provider",
+      categories: { $exists: true, $ne: [] },
+      category: { $exists: false },
+    },
+    [{ $set: { category: { $arrayElemAt: ["$categories", 0] } } }]
+  );
+
   await jobs.createIndex({ userId: 1, createdAt: -1 });
   await jobs.createIndex({ assignedProviderId: 1, status: 1, completedAt: -1 });
 

@@ -73,7 +73,7 @@ async function listProviders(req, res) {
         projection: {
           name: 1,
           profileImage: 1,
-          categories: 1,
+          category: 1,
           address: 1,
           badgeSubscriptionStatus: 1,
           rating: 1,
@@ -108,7 +108,7 @@ async function providerDetail(req, res) {
         projection: {
           name: 1,
           profileImage: 1,
-          categories: 1,
+          category: 1,
           address: 1,
           badgeSubscriptionStatus: 1,
           rating: 1,
@@ -389,11 +389,11 @@ async function updateProfile(req, res) {
     // Provider-only fields
     if (user.role === "provider") {
       if (fields.email) update.email = fields.email.toLowerCase().trim();
-      if (Array.isArray(fields.categories) && fields.categories.length > 0) {
-        if (!fields.categories.every((c) => VALID_CATEGORIES.includes(c))) {
+      if (fields.category) {
+        if (!VALID_CATEGORIES.includes(fields.category)) {
           return res.status(400).json({ message: "Invalid category" });
         }
-        update.categories = fields.categories;
+        update.category = fields.category;
       }
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;
       if (fields.cnicBackImage) update.cnicBackImage = fields.cnicBackImage;

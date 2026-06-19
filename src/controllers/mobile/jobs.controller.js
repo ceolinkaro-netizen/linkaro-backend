@@ -31,7 +31,7 @@ async function myJobs(req, res) {
           name: 1,
           profileImage: 1,
           rating: 1,
-          categories: 1,
+          category: 1,
           phone: 1,
           jobsCompleted: 1,
           lastSeenAt: 1,
@@ -55,9 +55,7 @@ async function myJobs(req, res) {
         assignedTo: provider.name ?? null,
         providerImage: provider.profileImage ?? null,
         providerRating: provider.rating ?? null,
-        providerBusiness: Array.isArray(provider.categories)
-          ? provider.categories.join(", ")
-          : null,
+        providerBusiness: provider.category ?? null,
         providerPhone: provider.phone ?? null,
         providerJobsCompleted: provider.jobsCompleted ?? 0,
         providerIsOnline:
@@ -244,9 +242,19 @@ async function completeJob(req, res) {
   }
 }
 
+const VALID_PRIORITIES = ["High", "Medium", "Low"];
+
 async function postJob(req, res) {
-  const { title, category, problem, location, scheduledTime, latitude, longitude } =
-    req.body;
+  const {
+    title,
+    category,
+    problem,
+    location,
+    scheduledTime,
+    priority,
+    latitude,
+    longitude,
+  } = req.body;
 
   if (!title || !category || !problem || !location) {
     return res.status(400).json({ message: "All fields are required" });
@@ -262,6 +270,7 @@ async function postJob(req, res) {
       problem: problem.trim(),
       location: location.trim(),
       scheduledTime: scheduledTime || "ASAP",
+      priority: VALID_PRIORITIES.includes(priority) ? priority : "Medium",
       status: "open",
       createdAt: new Date(),
     };
@@ -302,6 +311,7 @@ async function postJob(req, res) {
           latitude: jobDoc.latitude,
           longitude: jobDoc.longitude,
           scheduledTime: jobDoc.scheduledTime,
+          priority: jobDoc.priority,
           status: jobDoc.status,
           createdAt: jobDoc.createdAt,
           consumerId: jobDoc.userId,
@@ -321,7 +331,7 @@ async function postJob(req, res) {
   }
 }
 
-// Jobs near a provider: open jobs matching the provider's categories, within
+// Jobs near a provider: open jobs matching the provider's category, within
 // `radius` km of the given coordinates, sorted closest-first.
 async function nearbyJobs(req, res) {
   try {
@@ -356,9 +366,6 @@ async function nearbyJobs(req, res) {
     }
 
     const radiusKm = Number(req.query.radius) || 10;
-    const categories = Array.isArray(provider.categories)
-      ? provider.categories
-      : [];
 
     const inRange = await db
       .collection("jobs")
@@ -369,7 +376,7 @@ async function nearbyJobs(req, res) {
             distanceField: "distanceMeters",
             maxDistance: radiusKm * 1000,
             spherical: true,
-            query: { status: "open", category: { $in: categories } },
+            query: { status: "open", category: provider.category },
           },
         },
       ])
@@ -404,6 +411,7 @@ async function nearbyJobs(req, res) {
         latitude: job.latitude,
         longitude: job.longitude,
         scheduledTime: job.scheduledTime,
+        priority: job.priority ?? "Medium",
         status: job.status,
         createdAt: job.createdAt,
         distanceKm: job.distanceMeters / 1000,

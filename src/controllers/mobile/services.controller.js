@@ -19,9 +19,9 @@ async function myServices(req, res) {
 }
 
 async function postService(req, res) {
-  const { title, category, description, availability, location, images } = req.body;
+  const { title, category, description, location, images } = req.body;
 
-  if (!title || !category || !description || !availability || !location) {
+  if (!title || !category || !description || !location) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
@@ -34,8 +34,7 @@ async function postService(req, res) {
       return res.status(403).json({ message: "Only providers can post services" });
     }
 
-    const categories = Array.isArray(user.categories) ? user.categories : [];
-    if (!categories.includes(category)) {
+    if (user.category !== category) {
       return res.status(400).json({ message: "Selected category is not in your profile" });
     }
 
@@ -51,7 +50,6 @@ async function postService(req, res) {
       title: title.trim(),
       category,
       description: description.trim(),
-      availability,
       location: location.trim(),
       images: Array.isArray(images) ? images : [],
       createdAt: new Date(),
@@ -65,9 +63,9 @@ async function postService(req, res) {
 }
 
 async function updateService(req, res) {
-  const { serviceId, title, category, description, availability, location, images } = req.body;
+  const { serviceId, title, category, description, location, images } = req.body;
 
-  if (!serviceId || !title || !category || !description || !availability || !location) {
+  if (!serviceId || !title || !category || !description || !location) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
@@ -84,8 +82,7 @@ async function updateService(req, res) {
     }
 
     const user = await db.collection("users").findOne({ _id: providerId });
-    const categories = Array.isArray(user?.categories) ? user.categories : [];
-    if (!categories.includes(category)) {
+    if (user?.category !== category) {
       return res.status(400).json({ message: "Selected category is not in your profile" });
     }
 
@@ -105,7 +102,6 @@ async function updateService(req, res) {
           title: title.trim(),
           category,
           description: description.trim(),
-          availability,
           location: location.trim(),
           images: Array.isArray(images) ? images : [],
           updatedAt: new Date(),
