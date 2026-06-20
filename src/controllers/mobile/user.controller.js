@@ -42,52 +42,79 @@ async function me(req, res) {
   }
 }
 
+// Providers within `radius` km of the consumer's current coordinates,
+// ranked by rating, then verified badge, then jobs completed — distance is
+// only used as the search cutoff, not for ordering.
 async function listProviders(req, res) {
   try {
     const db = await getDb();
 
-    const consumer = await db
-      .collection("users")
-      .findOne(
-        { _id: new ObjectId(req.decoded.id) },
-        { projection: { "address.city": 1 } }
-      );
-
-    if (!consumer) {
-      return res.status(404).json({ message: "User not found" });
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(200).json({
+        success: true,
+        needsLocation: true,
+        providers: [],
+      });
     }
 
-    const city = consumer.address?.city;
-
-    const query = {
-      role: "provider",
-      registrationStatus: true,
-      subscriptionStatus: "active",
-    };
-    if (city) {
-      query["address.city"] = { $regex: `^${city}$`, $options: "i" };
-    }
+    const radiusKm = Number(req.query.radius) || 10;
 
     const providers = await db
       .collection("users")
-      .find(query, {
-        projection: {
-          name: 1,
-          profileImage: 1,
-          category: 1,
-          address: 1,
-          badgeSubscriptionStatus: 1,
-          rating: 1,
-          jobsCompleted: 1,
-          phone: 1,
-          lastSeenAt: 1,
+      .aggregate([
+        {
+          $geoNear: {
+            near: { type: "Point", coordinates: [lng, lat] },
+            distanceField: "distanceMeters",
+            maxDistance: radiusKm * 1000,
+            spherical: true,
+            query: {
+              role: "provider",
+              registrationStatus: true,
+              subscriptionStatus: "active",
+            },
+          },
         },
-      })
+        {
+          $addFields: {
+            isVerified: {
+              $cond: [{ $eq: ["$badgeSubscriptionStatus", "active"] }, 1, 0],
+            },
+            sortRating: { $ifNull: ["$rating", 0] },
+            sortJobsCompleted: { $ifNull: ["$jobsCompleted", 0] },
+          },
+        },
+        {
+          $sort: {
+            sortRating: -1,
+            isVerified: -1,
+            sortJobsCompleted: -1,
+          },
+        },
+        {
+          $project: {
+            name: 1,
+            profileImage: 1,
+            category: 1,
+            address: 1,
+            badgeSubscriptionStatus: 1,
+            rating: 1,
+            jobsCompleted: 1,
+            phone: 1,
+            lastSeenAt: 1,
+            distanceKm: { $divide: ["$distanceMeters", 1000] },
+          },
+        },
+      ])
       .toArray();
 
-    return res
-      .status(200)
-      .json({ success: true, providers: providers.map(withOnlineStatus) });
+    return res.status(200).json({
+      success: true,
+      needsLocation: false,
+      providers: providers.map(withOnlineStatus),
+    });
   } catch (error) {
     console.error("List providers error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -399,6 +426,13 @@ async function updateProfile(req, res) {
       }
       if (typeof fields.about === "string") {
         update.about = fields.about.trim();
+      }
+      const lat = Number(fields.latitude);
+      const lng = Number(fields.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        update.latitude = lat;
+        update.longitude = lng;
+        update.geo = { type: "Point", coordinates: [lng, lat] };
       }
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;
       if (fields.cnicBackImage) update.cnicBackImage = fields.cnicBackImage;

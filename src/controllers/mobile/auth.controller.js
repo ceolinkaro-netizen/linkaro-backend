@@ -307,6 +307,8 @@ async function signupProvider(req, res) {
     gender,
     category,
     about,
+    latitude,
+    longitude,
     profileImage,
     cnicFrontImage,
     cnicBackImage,
@@ -385,7 +387,7 @@ async function signupProvider(req, res) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await db.collection("users").insertOne({
+    const userDoc = {
       name,
       phone: `+92${phone}`,
       email: email.toLowerCase().trim(),
@@ -404,7 +406,17 @@ async function signupProvider(req, res) {
       badgeSubscriptionStatus: "inactive",
       registrationStatus: false,
       createdAt: new Date(),
-    });
+    };
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      userDoc.latitude = lat;
+      userDoc.longitude = lng;
+      userDoc.geo = { type: "Point", coordinates: [lng, lat] };
+    }
+
+    await db.collection("users").insertOne(userDoc);
 
     return res.status(201).json({ success: true, message: "Account created. Pending approval." });
   } catch (error) {

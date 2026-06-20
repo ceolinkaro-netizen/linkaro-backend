@@ -62,6 +62,25 @@ async function ensureIndexes() {
   await jobs.createIndex({ userId: 1, createdAt: -1 });
   await jobs.createIndex({ assignedProviderId: 1, status: 1, completedAt: -1 });
 
+  // Backfill GeoJSON `geo` for providers that only have plain
+  // `latitude`/`longitude` (e.g. set before the geo field existed).
+  await users.updateMany(
+    {
+      role: "provider",
+      latitude: { $exists: true },
+      longitude: { $exists: true },
+      geo: { $exists: false },
+    },
+    [
+      {
+        $set: {
+          geo: { type: "Point", coordinates: ["$longitude", "$latitude"] },
+        },
+      },
+    ]
+  );
+  await users.createIndex({ geo: "2dsphere" });
+
   const providerServices = db.collection("providerServices");
   await providerServices.createIndex({ providerId: 1, createdAt: -1 });
 
