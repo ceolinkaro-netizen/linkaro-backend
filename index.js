@@ -5,6 +5,8 @@ const { getClientPromise, ensureIndexes } = require("./src/config/db");
 const { initSocket } = require("./src/sockets");
 
 async function start() {
+  console.log("Raw process.env.PORT =", JSON.stringify(process.env.PORT));
+
   await getClientPromise();
   console.log("Connected to MongoDB");
 
@@ -15,7 +17,7 @@ async function start() {
   const io = initSocket(server);
   app.set("io", io);
 
-  server.listen(env.port, () => {
+  server.listen(env.port, "0.0.0.0", () => {
     console.log(`Linkaro backend listening on port ${env.port}`);
   });
 }
