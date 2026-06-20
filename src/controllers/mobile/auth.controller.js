@@ -471,7 +471,7 @@ async function signupProvider(req, res) {
 }
 
 // Switches the signed-in user to their other-role account (consumer <->
-// provider), matched by CNIC — both signup flows require it, and a single
+// provider), matched by email — both signup flows require it, and a single
 // person is allowed one account per role. No password re-entry: the
 // caller is already authenticated as the same real person.
 async function switchRole(req, res) {
@@ -491,7 +491,7 @@ async function switchRole(req, res) {
 
     const targetUser = await db
       .collection("users")
-      .findOne({ cnic: currentUser.email, role: targetRole });
+      .findOne({ email: currentUser.email, role: targetRole });
 
     if (!targetUser) {
       return res.status(404).json({
