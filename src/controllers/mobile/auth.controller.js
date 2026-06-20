@@ -4,7 +4,10 @@ const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const env = require("../../config/env");
 const { sendEmail, otpEmail } = require("../../lib/mailer");
-const { VALID_GENDERS, VALID_CATEGORIES } = require("../../constants/categories");
+const {
+  VALID_GENDERS,
+  VALID_CATEGORIES,
+} = require("../../constants/categories");
 
 const VALID_ROLES = ["consumer", "provider"];
 const EMAIL_REGEX = /^[\w\-.]+@([\w-]+\.)+[\w-]{2,}$/;
@@ -13,7 +16,9 @@ async function checkAvailability(req, res) {
   const { email, cnic, phone, role } = req.body;
 
   if (!email || !cnic || !role) {
-    return res.status(400).json({ message: "Email, CNIC and role are required" });
+    return res
+      .status(400)
+      .json({ message: "Email, CNIC and role are required" });
   }
 
   try {
@@ -26,9 +31,7 @@ async function checkAvailability(req, res) {
       return res.status(409).json({ message: "Email is already registered" });
     }
 
-    const existingCnic = await db
-      .collection("users")
-      .findOne({ cnic, role });
+    const existingCnic = await db.collection("users").findOne({ cnic, role });
     if (existingCnic) {
       return res.status(409).json({ message: "CNIC is already registered" });
     }
@@ -38,7 +41,9 @@ async function checkAvailability(req, res) {
         .collection("users")
         .findOne({ phone: `+92${phone}`, role });
       if (existingPhone) {
-        return res.status(409).json({ message: "Phone number is already registered" });
+        return res
+          .status(409)
+          .json({ message: "Phone number is already registered" });
       }
     }
 
@@ -53,11 +58,15 @@ async function login(req, res) {
   const { email, password, role } = req.body;
 
   if (!email || !password || !role) {
-    return res.status(400).json({ message: "Email, password and role are required" });
+    return res
+      .status(400)
+      .json({ message: "Email, password and role are required" });
   }
 
   if (!VALID_ROLES.includes(role)) {
-    return res.status(400).json({ message: "Invalid role. Must be 'consumer' or 'provider'" });
+    return res
+      .status(400)
+      .json({ message: "Invalid role. Must be 'consumer' or 'provider'" });
   }
 
   try {
@@ -81,12 +90,16 @@ async function login(req, res) {
     }
 
     if (user.role !== role) {
-      return res.status(403).json({ message: "You don't have access with this role" });
+      return res
+        .status(403)
+        .json({ message: "You don't have access with this role" });
     }
 
     // Provider whose registration hasn't been approved yet
     if (role === "provider" && user.registrationStatus === false) {
-      return res.status(200).json({ success: false, registrationPending: true });
+      return res
+        .status(200)
+        .json({ success: false, registrationPending: true });
     }
 
     const token = jwt.sign(
@@ -116,7 +129,9 @@ async function providerLogin(req, res) {
   const { email, name, profileImage, provider, providerId, role } = req.body;
 
   if (!email || !provider || !providerId) {
-    return res.status(400).json({ message: "Email, provider and providerId are required" });
+    return res
+      .status(400)
+      .json({ message: "Email, provider and providerId are required" });
   }
 
   try {
@@ -136,7 +151,9 @@ async function providerLogin(req, res) {
 
     // ── Registration pending check ────────────────────────────────────────────
     if (user.role === "provider" && user.registrationStatus === false) {
-      return res.status(200).json({ success: false, registrationPending: true });
+      return res
+        .status(200)
+        .json({ success: false, registrationPending: true });
     }
 
     // ── Return token ──────────────────────────────────────────────────────────
@@ -174,7 +191,9 @@ async function resetPassword(req, res) {
   }
 
   if (password.length < 6) {
-    return res.status(400).json({ message: "Password must be at least 6 characters" });
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 6 characters" });
   }
 
   try {
@@ -185,17 +204,20 @@ async function resetPassword(req, res) {
     const user = await db.collection("users").findOne(query);
 
     if (!user) {
-      return res.status(404).json({ message: "No account found with this email and role" });
+      return res
+        .status(404)
+        .json({ message: "No account found with this email and role" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await db.collection("users").updateOne(
-      query,
-      { $set: { password: hashedPassword } }
-    );
+    await db
+      .collection("users")
+      .updateOne(query, { $set: { password: hashedPassword } });
 
-    return res.status(200).json({ success: true, message: "Password updated successfully" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Password updated successfully" });
   } catch (error) {
     console.error("Reset password error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -216,7 +238,9 @@ async function sendOtp(req, res) {
       html: otpEmail(code),
     });
 
-    return res.status(200).json({ success: true, message: "OTP sent successfully" });
+    return res
+      .status(200)
+      .json({ success: true, message: "OTP sent successfully" });
   } catch (error) {
     console.error("Send OTP error:", error);
     return res.status(500).json({ message: "Failed to send email" });
@@ -227,7 +251,11 @@ async function signupConsumer(req, res) {
   const { fullName, phone, email, cnic, password, profileImage } = req.body;
 
   if (!fullName || !phone || !email || !cnic || !password) {
-    return res.status(400).json({ message: "Full name, phone, email, CNIC and password are required" });
+    return res
+      .status(400)
+      .json({
+        message: "Full name, phone, email, CNIC and password are required",
+      });
   }
 
   if (!EMAIL_REGEX.test(email)) {
@@ -235,7 +263,9 @@ async function signupConsumer(req, res) {
   }
 
   if (String(phone).length !== 10) {
-    return res.status(400).json({ message: "Phone must be 10 digits (without +92)" });
+    return res
+      .status(400)
+      .json({ message: "Phone must be 10 digits (without +92)" });
   }
 
   if (String(cnic).length !== 13) {
@@ -243,7 +273,9 @@ async function signupConsumer(req, res) {
   }
 
   if (password.length < 6) {
-    return res.status(400).json({ message: "Password must be at least 6 characters" });
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 6 characters" });
   }
 
   if (!profileImage) {
@@ -271,7 +303,9 @@ async function signupConsumer(req, res) {
       .collection("users")
       .findOne({ phone: `+92${phone}`, role: "consumer" });
     if (existingPhone) {
-      return res.status(409).json({ message: "Phone number is already registered" });
+      return res
+        .status(409)
+        .json({ message: "Phone number is already registered" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -288,7 +322,9 @@ async function signupConsumer(req, res) {
       createdAt: new Date(),
     });
 
-    return res.status(201).json({ success: true, message: "Account created successfully" });
+    return res
+      .status(201)
+      .json({ success: true, message: "Account created successfully" });
   } catch (error) {
     console.error("Consumer signup error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -337,7 +373,9 @@ async function signupProvider(req, res) {
   }
 
   if (String(phone).length !== 10) {
-    return res.status(400).json({ message: "Phone must be 10 digits (without +92)" });
+    return res
+      .status(400)
+      .json({ message: "Phone must be 10 digits (without +92)" });
   }
 
   if (String(cnic).length !== 13) {
@@ -345,7 +383,9 @@ async function signupProvider(req, res) {
   }
 
   if (password.length < 6) {
-    return res.status(400).json({ message: "Password must be at least 6 characters" });
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 6 characters" });
   }
 
   if (!VALID_GENDERS.includes(gender)) {
@@ -383,7 +423,9 @@ async function signupProvider(req, res) {
       .collection("users")
       .findOne({ phone: `+92${phone}`, role: "provider" });
     if (existingPhone) {
-      return res.status(409).json({ message: "Phone number is already registered" });
+      return res
+        .status(409)
+        .json({ message: "Phone number is already registered" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -419,7 +461,9 @@ async function signupProvider(req, res) {
 
     await db.collection("users").insertOne(userDoc);
 
-    return res.status(201).json({ success: true, message: "Account created. Pending approval." });
+    return res
+      .status(201)
+      .json({ success: true, message: "Account created. Pending approval." });
   } catch (error) {
     console.error("Provider signup error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -442,11 +486,12 @@ async function switchRole(req, res) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const targetRole = currentUser.role === "consumer" ? "provider" : "consumer";
+    const targetRole =
+      currentUser.role === "consumer" ? "provider" : "consumer";
 
     const targetUser = await db
       .collection("users")
-      .findOne({ cnic: currentUser.cnic, role: targetRole });
+      .findOne({ cnic: currentUser.email, role: targetRole });
 
     if (!targetUser) {
       return res.status(404).json({
@@ -455,16 +500,24 @@ async function switchRole(req, res) {
     }
 
     if (targetRole === "provider" && targetUser.registrationStatus === false) {
-      return res.status(200).json({ success: false, registrationPending: true });
+      return res
+        .status(200)
+        .json({ success: false, registrationPending: true });
     }
 
     const token = jwt.sign(
-      { id: targetUser._id.toString(), email: targetUser.email, role: targetUser.role },
+      {
+        id: targetUser._id.toString(),
+        email: targetUser.email,
+        role: targetUser.role,
+      },
       env.secretKey,
       { expiresIn: "30d" },
     );
 
-    return res.status(200).json({ success: true, token, role: targetUser.role });
+    return res
+      .status(200)
+      .json({ success: true, token, role: targetUser.role });
   } catch (error) {
     console.error("Switch role error:", error);
     return res.status(500).json({ message: "Internal server error" });
