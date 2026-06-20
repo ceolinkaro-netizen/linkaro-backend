@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const env = require("../../config/env");
 const { sendEmail, otpEmail } = require("../../lib/mailer");
@@ -425,6 +426,51 @@ async function signupProvider(req, res) {
   }
 }
 
+// Switches the signed-in user to their other-role account (consumer <->
+// provider), matched by CNIC — both signup flows require it, and a single
+// person is allowed one account per role. No password re-entry: the
+// caller is already authenticated as the same real person.
+async function switchRole(req, res) {
+  try {
+    const db = await getDb();
+
+    const currentUser = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(req.decoded.id) });
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const targetRole = currentUser.role === "consumer" ? "provider" : "consumer";
+
+    const targetUser = await db
+      .collection("users")
+      .findOne({ cnic: currentUser.cnic, role: targetRole });
+
+    if (!targetUser) {
+      return res.status(404).json({
+        message: `You don't have a ${targetRole} account to switch to.`,
+      });
+    }
+
+    if (targetRole === "provider" && targetUser.registrationStatus === false) {
+      return res.status(200).json({ success: false, registrationPending: true });
+    }
+
+    const token = jwt.sign(
+      { id: targetUser._id.toString(), email: targetUser.email, role: targetUser.role },
+      env.secretKey,
+      { expiresIn: "30d" },
+    );
+
+    return res.status(200).json({ success: true, token, role: targetUser.role });
+  } catch (error) {
+    console.error("Switch role error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   checkAvailability,
   login,
@@ -433,4 +479,5 @@ module.exports = {
   sendOtp,
   signupConsumer,
   signupProvider,
+  switchRole,
 };
