@@ -7,6 +7,7 @@ const {
   registrationUnverifiedEmail,
   subscriptionStatusEmail,
 } = require("../lib/mailer");
+const { createNotification } = require("../lib/notifications");
 
 const BLOCKED_USER_FIELDS = [
   "password", "role", "subscriptionStatus", "badgeSubscriptionStatus",
@@ -384,6 +385,19 @@ async function updateSubscriptionStatus(req, res) {
       );
     }
 
+    if (user) {
+      const messages = {
+        active: "Your subscription has been approved and activated.",
+        rejected: "Your subscription request has been rejected.",
+        fraud: "Your subscription has been flagged for review.",
+      };
+      createNotification({
+        userId: user._id,
+        type: "subscription_status",
+        message: messages[status],
+      }).catch((err) => console.error("Notification create error:", err));
+    }
+
     return res.status(200).json({ success: true, status });
   } catch (error) {
     console.error("Update subscription status error:", error);
@@ -457,6 +471,14 @@ async function updateUser(req, res) {
       sendEmail({ to: user.email, subject, html }).catch((err) =>
         console.error("Email send error:", err)
       );
+
+      createNotification({
+        userId: user._id,
+        type: "id_approved",
+        message: update.registrationStatus === true
+          ? "Your ID has been approved!"
+          : "Your ID verification has been revoked.",
+      }).catch((err) => console.error("Notification create error:", err));
     }
 
     return res.status(200).json({ success: true });

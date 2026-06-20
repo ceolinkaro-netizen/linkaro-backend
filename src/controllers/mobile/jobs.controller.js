@@ -1,6 +1,8 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const { isUserOnline } = require("../../sockets");
+const { createNotification } = require("../../lib/notifications");
+const { sendEmail, jobHiredEmail, jobCompletedEmail } = require("../../lib/mailer");
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 
@@ -123,6 +125,20 @@ async function assignProvider(req, res) {
       });
     }
 
+    createNotification({
+      userId: provider._id,
+      type: "job_hired",
+      message: `You've been hired for the job "${job.title}".`,
+    }).catch((err) => console.error("Notification create error:", err));
+
+    if (provider.email) {
+      sendEmail({
+        to: provider.email,
+        subject: "You've been hired for a job on Linkaro",
+        html: jobHiredEmail(provider.name || "there", job.title),
+      }).catch((err) => console.error("Email send error:", err));
+    }
+
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Assign provider error:", error);
@@ -222,7 +238,7 @@ async function completeJob(req, res) {
         .collection("users")
         .findOne(
           { _id: job.assignedProviderId },
-          { projection: { rating: 1, jobsCompleted: 1 } }
+          { projection: { rating: 1, jobsCompleted: 1, name: 1, email: 1 } }
         );
 
       const prevCount = provider?.jobsCompleted ?? 0;
@@ -233,6 +249,20 @@ async function completeJob(req, res) {
         { _id: job.assignedProviderId },
         { $set: { rating: newRating }, $inc: { jobsCompleted: 1 } }
       );
+
+      createNotification({
+        userId: job.assignedProviderId,
+        type: "job_completed",
+        message: `The job "${job.title}" has been marked as completed.`,
+      }).catch((err) => console.error("Notification create error:", err));
+
+      if (provider?.email) {
+        sendEmail({
+          to: provider.email,
+          subject: "Job completed on Linkaro",
+          html: jobCompletedEmail(provider.name || "there", job.title),
+        }).catch((err) => console.error("Email send error:", err));
+      }
     }
 
     return res.status(200).json({ success: true });

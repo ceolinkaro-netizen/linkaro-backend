@@ -125,6 +125,30 @@ function subscriptionStatusEmail(name, status, subscriptionType) {
   `);
 }
 
+function jobHiredEmail(name, jobTitle) {
+  return baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="display:inline-block;width:56px;height:56px;background:#e8fdf3;border-radius:50%;line-height:56px;font-size:26px;">✓</div>
+    </div>
+    <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111;text-align:center;">You've Been Hired!</h1>
+    <p style="margin:0 0 24px;font-size:15px;color:#555;text-align:center;line-height:1.6;">
+      Hi <strong>${name}</strong>, you've been hired for the job <strong>"${jobTitle}"</strong>. Check the app for full job details.
+    </p>
+  `);
+}
+
+function jobCompletedEmail(name, jobTitle) {
+  return baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="display:inline-block;width:56px;height:56px;background:#e8fdf3;border-radius:50%;line-height:56px;font-size:26px;">✓</div>
+    </div>
+    <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111;text-align:center;">Job Completed</h1>
+    <p style="margin:0 0 24px;font-size:15px;color:#555;text-align:center;line-height:1.6;">
+      Hi <strong>${name}</strong>, the job <strong>"${jobTitle}"</strong> has been marked as completed. Thanks for your work on Linkaro!
+    </p>
+  `);
+}
+
 function otpEmail(code) {
   return `
     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #000F2C; border-radius: 12px;">
@@ -143,5 +167,7 @@ module.exports = {
   registrationVerifiedEmail,
   registrationUnverifiedEmail,
   subscriptionStatusEmail,
+  jobHiredEmail,
+  jobCompletedEmail,
   otpEmail,
 };

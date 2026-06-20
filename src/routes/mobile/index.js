@@ -5,6 +5,7 @@ const userRoutes = require("./user.routes");
 const servicesRoutes = require("./services.routes");
 const ticketsRoutes = require("./tickets.routes");
 const chatRoutes = require("./chat.routes");
+const notificationsRoutes = require("./notifications.routes");
 const { migrateRegistrationStatus } = require("../../controllers/mobile/migration.controller");
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router.use("/user", userRoutes);
 router.use("/services", servicesRoutes);
 router.use("/tickets", ticketsRoutes);
 router.use("/chat", chatRoutes);
+router.use("/notifications", notificationsRoutes);
 router.post("/migrate-registration-status", migrateRegistrationStatus);
 
 module.exports = router;

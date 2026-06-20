@@ -89,6 +89,9 @@ async function ensureIndexes() {
 
   const conversations = db.collection("conversations");
   await conversations.createIndex({ participants: 1, updatedAt: -1 });
+
+  const notifications = db.collection("notifications");
+  await notifications.createIndex({ userId: 1, createdAt: -1 });
 }
 
 module.exports = { getDb, getClientPromise, ensureIndexes };
