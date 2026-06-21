@@ -6,6 +6,7 @@ module.exports = {
   mongodbUri: process.env.MONGODB_URI,
   secretKey: process.env.SECRET_KEY,
   cronSecret: process.env.CRON_SECRET,
+  googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
   brevo: {
     apiKey: process.env.BREVO_API_KEY,
     senderEmail: process.env.EMAIL,

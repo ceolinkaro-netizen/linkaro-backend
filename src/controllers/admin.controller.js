@@ -1,4 +1,5 @@
 const { ObjectId } = require("mongodb");
+const bcrypt = require("bcryptjs");
 const { getDb } = require("../config/db");
 const env = require("../config/env");
 const {
@@ -8,6 +9,8 @@ const {
   subscriptionStatusEmail,
 } = require("../lib/mailer");
 const { createNotification } = require("../lib/notifications");
+const { uploadToCloudinary } = require("../lib/cloudinary");
+const { geocodeAddressPakistan } = require("../lib/geocoding");
 
 const BLOCKED_USER_FIELDS = [
   "password", "role", "subscriptionStatus", "badgeSubscriptionStatus",
@@ -100,6 +103,20 @@ async function getJobs(req, res) {
             preserveNullAndEmptyArrays: true,
           },
         },
+        {
+          $lookup: {
+            from: "users",
+            localField: "assignedProviderId",
+            foreignField: "_id",
+            as: "provider",
+          },
+        },
+        {
+          $unwind: {
+            path: "$provider",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
         { $sort: { createdAt: -1 } },
       ])
       .toArray();
@@ -107,6 +124,142 @@ async function getJobs(req, res) {
     return res.status(200).json({ success: true, jobs });
   } catch (error) {
     console.error("Get jobs error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function uploadImage(req, res) {
+  const { image, folder } = req.body;
+
+  if (!image) {
+    return res.status(400).json({ message: "image is required" });
+  }
+
+  try {
+    const url = await uploadToCloudinary(image, folder || "tickets");
+    return res.status(200).json({ success: true, url });
+  } catch (error) {
+    console.error("Upload image error:", error);
+    return res.status(500).json({ message: "Image upload failed" });
+  }
+}
+
+const TICKET_STATUSES = ["ongoing", "pending", "completed"];
+
+async function getTickets(req, res) {
+  try {
+    const db = await getDb();
+
+    const tickets = await db
+      .collection("tickets")
+      .aggregate([
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "consumer",
+          },
+        },
+        {
+          $unwind: {
+            path: "$consumer",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        { $sort: { createdAt: -1 } },
+      ])
+      .toArray();
+
+    return res.status(200).json({ success: true, tickets });
+  } catch (error) {
+    console.error("Get tickets error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function updateTicket(req, res) {
+  const { id, status, solution, solutionImages } = req.body;
+
+  if (!id || !ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Valid ticket id is required" });
+  }
+  if (status && !TICKET_STATUSES.includes(status)) {
+    return res.status(400).json({ message: "Invalid status" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const update = {};
+    if (status) update.status = status;
+    if (solution !== undefined) update.solution = solution;
+    if (solutionImages !== undefined) update.solutionImages = solutionImages;
+
+    await db.collection("tickets").updateOne({ _id: new ObjectId(id) }, { $set: update });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Update ticket error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+const NOTIFICATION_AUDIENCES = ["all", "consumer", "provider"];
+
+async function sendNotification(req, res) {
+  const { message, audience } = req.body;
+
+  if (!message || !message.trim()) {
+    return res.status(400).json({ message: "Message is required" });
+  }
+  if (!NOTIFICATION_AUDIENCES.includes(audience)) {
+    return res.status(400).json({ message: "Invalid audience" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const query = audience === "all" ? { role: { $in: ["consumer", "provider"] } } : { role: audience };
+    const recipients = await db.collection("users").find(query).project({ _id: 1 }).toArray();
+
+    if (recipients.length === 0) {
+      return res.status(200).json({ success: true, sent: 0 });
+    }
+
+    const createdAt = new Date();
+    const docs = recipients.map((u) => ({
+      userId: u._id,
+      type: "admin_announcement",
+      message: message.trim(),
+      read: false,
+      createdAt,
+    }));
+
+    await db.collection("notifications").insertMany(docs);
+
+    return res.status(200).json({ success: true, sent: docs.length });
+  } catch (error) {
+    console.error("Send notification error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function deleteJob(req, res) {
+  const { id } = req.query;
+
+  if (!id) {
+    return res.status(400).json({ message: "id is required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    await db.collection("jobs").deleteOne({ _id: new ObjectId(id) });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Delete job error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -441,6 +594,32 @@ async function updateUser(req, res) {
       if (fields.category)       update.category       = fields.category;
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;
       if (fields.cnicBackImage)  update.cnicBackImage  = fields.cnicBackImage;
+      if (typeof fields.about === "string") update.about = fields.about.trim();
+
+      // Re-derive the coordinates from the new address — same approach the
+      // mobile app's edit-profile screen uses (geocode street+city, keep
+      // the result only if it lands inside Pakistan). Coordinates are never
+      // accepted directly from the request.
+      if (update.address?.street && update.address?.city) {
+        try {
+          const coords = await geocodeAddressPakistan(update.address.street, update.address.city);
+          if (coords) {
+            update.latitude = coords.latitude;
+            update.longitude = coords.longitude;
+            update.geo = { type: "Point", coordinates: [coords.longitude, coords.latitude] };
+          } else {
+            console.warn(
+              `Geocoding returned no usable result for "${update.address.street}, ${update.address.city}" (user ${id})`
+            );
+          }
+        } catch (geoError) {
+          console.error("Geocoding error:", geoError);
+        }
+      } else if (fields.street || fields.city) {
+        console.warn(
+          `Skipped geocoding for user ${id} — street and city are both required (got street="${update.address?.street}", city="${update.address?.city}")`
+        );
+      }
     }
 
     // Remove any blocked fields that may have slipped through
@@ -488,15 +667,184 @@ async function updateUser(req, res) {
   }
 }
 
+const MANAGER_ROLES = ["admin", "user manager", "ticket manager"];
+
+// Manager accounts (admin / user manager / ticket manager) live in the same
+// "users" collection as consumers/providers, distinguished by role — that's
+// already how login resolves them (auth.controller.js's ROLE_ROUTES).
+// Only an actual admin may view or manage these accounts.
+function requireAdminRole(req, res) {
+  if (req.user?.role !== "admin") {
+    res.status(403).json({ message: "Admin access required" });
+    return false;
+  }
+  return true;
+}
+
+async function getManagers(req, res) {
+  if (!requireAdminRole(req, res)) return;
+
+  try {
+    const db = await getDb();
+
+    const managers = await db
+      .collection("users")
+      .find({ role: { $in: MANAGER_ROLES } })
+      .project({ password: 0 })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const stats = {
+      total: managers.length,
+      admin: managers.filter((m) => m.role === "admin").length,
+      userManager: managers.filter((m) => m.role === "user manager").length,
+      ticketManager: managers.filter((m) => m.role === "ticket manager").length,
+    };
+
+    return res.status(200).json({ success: true, managers, stats });
+  } catch (error) {
+    console.error("Get managers error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function createManager(req, res) {
+  if (!requireAdminRole(req, res)) return;
+
+  const { name, email, password, role } = req.body;
+
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ message: "Name, email, password and role are required" });
+  }
+  if (!MANAGER_ROLES.includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ message: "Password must be at least 6 characters" });
+  }
+
+  try {
+    const db = await getDb();
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await db.collection("users").findOne({ email: normalizedEmail });
+    if (existing) {
+      return res.status(409).json({ message: "Email is already registered" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await db.collection("users").insertOne({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      role,
+      createdAt: new Date(),
+    });
+
+    return res.status(201).json({ success: true, id: result.insertedId });
+  } catch (error) {
+    console.error("Create manager error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function updateManager(req, res) {
+  if (!requireAdminRole(req, res)) return;
+
+  const { id, name, email, role, password } = req.body;
+
+  if (!id) return res.status(400).json({ message: "id is required" });
+  if (role && !MANAGER_ROLES.includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+  if (password && password.length < 6) {
+    return res.status(400).json({ message: "Password must be at least 6 characters" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const manager = await db.collection("users").findOne({ _id: new ObjectId(id) });
+    if (!manager || !MANAGER_ROLES.includes(manager.role)) {
+      return res.status(404).json({ message: "Manager not found" });
+    }
+
+    const update = {};
+    if (name) update.name = name.trim();
+    if (role) update.role = role;
+
+    if (email) {
+      const normalizedEmail = email.toLowerCase().trim();
+      if (normalizedEmail !== manager.email) {
+        const existing = await db
+          .collection("users")
+          .findOne({ email: normalizedEmail, _id: { $ne: manager._id } });
+        if (existing) {
+          return res.status(409).json({ message: "Email is already registered" });
+        }
+      }
+      update.email = normalizedEmail;
+    }
+
+    if (password) {
+      update.password = await bcrypt.hash(password, 10);
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    await db.collection("users").updateOne({ _id: manager._id }, { $set: update });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Update manager error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function deleteManager(req, res) {
+  if (!requireAdminRole(req, res)) return;
+
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ message: "id is required" });
+
+  try {
+    const db = await getDb();
+
+    const manager = await db.collection("users").findOne({ _id: new ObjectId(id) });
+    if (!manager || !MANAGER_ROLES.includes(manager.role)) {
+      return res.status(404).json({ message: "Manager not found" });
+    }
+
+    await db.collection("users").deleteOne({ _id: manager._id });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Delete manager error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   checkExpiredSubscriptions,
+  createManager,
+  deleteJob,
+  deleteManager,
   deleteUser,
   getJobs,
+  getManagers,
   getProviders,
   getSubscription,
   getSubscriptions,
+  getTickets,
   getUser,
   getUsers,
+  sendNotification,
+  updateManager,
   updateSubscriptionStatus,
+  updateTicket,
   updateUser,
+  uploadImage,
 };

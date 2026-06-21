@@ -5,8 +5,8 @@ const env = require("../config/env");
 
 const ROLE_ROUTES = {
   admin: "/admin/dashboard",
-  "user manager": "/user-manager/dashboard",
-  "ticket manager": "/ticket-manager/dashboard",
+  "user manager": "/admin/user-management",
+  "ticket manager": "/ticket-management",
 };
 
 async function login(req, res) {
@@ -67,4 +67,12 @@ function logout(req, res) {
   return res.status(200).json({ success: true });
 }
 
-module.exports = { login, logout };
+function me(req, res) {
+  return res.status(200).json({
+    success: true,
+    role: req.user.role,
+    email: req.user.email,
+  });
+}
+
+module.exports = { login, logout, me };

@@ -64,8 +64,45 @@ async function deleteManyFromCloudinary(urls, resourceType = "image") {
   );
 }
 
+// Uploads a base64 data URI (or remote URL) to Cloudinary via a signed
+// request and returns the resulting secure_url.
+async function uploadToCloudinary(file, folder = "uploads") {
+  const { cloudName, apiKey, apiSecret } = env.cloudinary;
+  if (!apiKey || !apiSecret) {
+    throw new Error("Cloudinary API credentials not configured");
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = crypto
+    .createHash("sha1")
+    .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
+    .digest("hex");
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        file,
+        folder,
+        timestamp: String(timestamp),
+        api_key: apiKey,
+        signature,
+      }),
+    }
+  );
+
+  const data = await res.json();
+  if (!data.secure_url) {
+    throw new Error(data.error?.message || "Cloudinary upload failed");
+  }
+  return data.secure_url;
+}
+
 module.exports = {
   extractPublicId,
   deleteFromCloudinary,
   deleteManyFromCloudinary,
+  uploadToCloudinary,
 };
