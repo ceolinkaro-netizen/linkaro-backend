@@ -48,10 +48,16 @@ async function login(req, res) {
       { expiresIn: "7d" },
     );
 
+    // In production the dashboard (Vercel) and this API (Render) are on
+    // different domains, so the cookie must be SameSite=None (which itself
+    // requires Secure) to be sent on cross-site fetch calls at all. Locally
+    // both run on "localhost" (just different ports), where Lax is fine and
+    // Secure would block the cookie over plain http.
     const isProduction = env.nodeEnv === "production";
+    const sameSite = isProduction ? "None" : "Lax";
     res.setHeader(
       "Set-Cookie",
-      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax${isProduction ? "; Secure" : ""}`,
+      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}${isProduction ? "; Secure" : ""}`,
     );
 
     const redirectTo = ROLE_ROUTES[user.role] || "/admin/dashboard";
@@ -63,7 +69,12 @@ async function login(req, res) {
 }
 
 function logout(req, res) {
-  res.setHeader("Set-Cookie", "token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax");
+  const isProduction = env.nodeEnv === "production";
+  const sameSite = isProduction ? "None" : "Lax";
+  res.setHeader(
+    "Set-Cookie",
+    `token=; HttpOnly; Path=/; Max-Age=0; SameSite=${sameSite}${isProduction ? "; Secure" : ""}`,
+  );
   return res.status(200).json({ success: true });
 }
 
