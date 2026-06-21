@@ -129,6 +129,7 @@ async function assignProvider(req, res) {
       userId: provider._id,
       type: "job_hired",
       message: `You've been hired for the job "${job.title}".`,
+      io,
     }).catch((err) => console.error("Notification create error:", err));
 
     if (provider.email) {
@@ -254,6 +255,7 @@ async function completeJob(req, res) {
         userId: job.assignedProviderId,
         type: "job_completed",
         message: `The job "${job.title}" has been marked as completed.`,
+        io: req.app.get("io"),
       }).catch((err) => console.error("Notification create error:", err));
 
       if (provider?.email) {

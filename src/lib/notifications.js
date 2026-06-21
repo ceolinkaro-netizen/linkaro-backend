@@ -3,8 +3,9 @@ const { getDb } = require("../config/db");
 
 // Records an in-app notification for a user. Callers fire this
 // fire-and-forget (same pattern as sendEmail) so a notification failure
-// never blocks the action that triggered it.
-async function createNotification({ userId, type, message }) {
+// never blocks the action that triggered it. Pass `io` (req.app.get("io"))
+// so the user's home screen badge updates in real time.
+async function createNotification({ userId, type, message, io }) {
   const db = await getDb();
   await db.collection("notifications").insertOne({
     userId: new ObjectId(userId),
@@ -13,6 +14,10 @@ async function createNotification({ userId, type, message }) {
     read: false,
     createdAt: new Date(),
   });
+
+  if (io) {
+    io.to(`user:${userId}`).emit("notification_created", {});
+  }
 }
 
 module.exports = { createNotification };

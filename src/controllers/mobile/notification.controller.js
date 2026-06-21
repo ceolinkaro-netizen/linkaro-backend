@@ -36,4 +36,19 @@ async function listNotifications(req, res) {
   }
 }
 
-module.exports = { listNotifications };
+async function getUnreadCount(req, res) {
+  try {
+    const db = await getDb();
+    const count = await db.collection("notifications").countDocuments({
+      userId: new ObjectId(req.decoded.id),
+      read: false,
+    });
+
+    return res.status(200).json({ success: true, count });
+  } catch (error) {
+    console.error("Get unread notification count error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+module.exports = { listNotifications, getUnreadCount };

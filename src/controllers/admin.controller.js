@@ -548,6 +548,7 @@ async function updateSubscriptionStatus(req, res) {
         userId: user._id,
         type: "subscription_status",
         message: messages[status],
+        io: req.app.get("io"),
       }).catch((err) => console.error("Notification create error:", err));
     }
 
@@ -657,6 +658,7 @@ async function updateUser(req, res) {
         message: update.registrationStatus === true
           ? "Your ID has been approved!"
           : "Your ID verification has been revoked.",
+        io: req.app.get("io"),
       }).catch((err) => console.error("Notification create error:", err));
     }
 
