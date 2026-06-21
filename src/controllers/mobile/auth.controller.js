@@ -28,12 +28,20 @@ async function checkAvailability(req, res) {
     const existingEmail = await db
       .collection("users")
       .findOne({ email: email.toLowerCase().trim(), role });
-    if (existingEmail) {
+
+    // A deactivated account is reactivated by signup, not blocked as a
+    // duplicate — mirrors the same check in signupConsumer/signupProvider.
+    const reactivateId =
+      existingEmail && existingEmail.isActive === false
+        ? existingEmail._id
+        : null;
+
+    if (existingEmail && !reactivateId) {
       return res.status(409).json({ message: "Email is already registered" });
     }
 
     const existingCnic = await db.collection("users").findOne({ cnic, role });
-    if (existingCnic) {
+    if (existingCnic && !existingCnic._id.equals(reactivateId)) {
       return res.status(409).json({ message: "CNIC is already registered" });
     }
 
@@ -41,7 +49,7 @@ async function checkAvailability(req, res) {
       const existingPhone = await db
         .collection("users")
         .findOne({ phone: `+92${phone}`, role });
-      if (existingPhone) {
+      if (existingPhone && !existingPhone._id.equals(reactivateId)) {
         return res
           .status(409)
           .json({ message: "Phone number is already registered" });
