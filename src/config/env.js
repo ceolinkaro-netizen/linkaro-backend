@@ -20,10 +20,18 @@ module.exports = {
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // Env vars can't hold real newlines, so the .env value uses literal
-    // "\n" sequences — un-escape them back into a real PEM string here.
-    privateKey: process.env.FIREBASE_PRIVATE_KEY
-      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
-      : undefined,
+    // Prefer the base64 form (FIREBASE_PRIVATE_KEY_BASE64) — some hosting
+    // dashboards (Render included) mangle the multi-line PEM string's "\n"
+    // escapes when pasted into their env var UI, which breaks OpenSSL's
+    // parser with a cryptic "DECODER routines::unsupported" error. Base64
+    // has no special characters for any UI to corrupt. Falls back to the
+    // escaped-"\n" form for local .env convenience.
+    privateKey: process.env.FIREBASE_PRIVATE_KEY_BASE64
+      ? Buffer.from(process.env.FIREBASE_PRIVATE_KEY_BASE64, "base64").toString(
+          "utf8"
+        )
+      : process.env.FIREBASE_PRIVATE_KEY
+        ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
+        : undefined,
   },
 };
