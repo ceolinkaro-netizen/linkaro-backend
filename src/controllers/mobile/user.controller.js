@@ -644,6 +644,60 @@ async function deactivateAccount(req, res) {
   }
 }
 
+// Saves/refreshes the device's FCM registration token so push notifications
+// can be sent to it. Called on login and whenever Firebase rotates the token.
+async function updateFcmToken(req, res) {
+  const { fcmToken } = req.body;
+
+  if (!fcmToken) {
+    return res.status(400).json({ message: "fcmToken is required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    await db
+      .collection("users")
+      .updateOne(
+        { _id: new ObjectId(req.decoded.id) },
+        { $set: { fcmToken, updatedAt: new Date() } }
+      );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Update FCM token error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Server-side mirror of the Settings screen's Push Notifications toggle —
+// without this, the server has no way to know it shouldn't send a push,
+// since once delivered to a backgrounded/terminated app the OS displays it
+// automatically regardless of any in-app preference.
+async function updatePushPreference(req, res) {
+  const { enabled } = req.body;
+
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json({ message: "enabled (boolean) is required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    await db
+      .collection("users")
+      .updateOne(
+        { _id: new ObjectId(req.decoded.id) },
+        { $set: { pushNotificationsEnabled: enabled, updatedAt: new Date() } }
+      );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Update push preference error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   me,
   listProviders,
@@ -657,4 +711,6 @@ module.exports = {
   checkEmail,
   updateEmail,
   deactivateAccount,
+  updateFcmToken,
+  updatePushPreference,
 };

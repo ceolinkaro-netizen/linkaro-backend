@@ -13,6 +13,8 @@ const {
   checkEmail,
   updateEmail,
   deactivateAccount,
+  updateFcmToken,
+  updatePushPreference,
 } = require("../../controllers/mobile/user.controller");
 
 const router = express.Router();
@@ -30,5 +32,7 @@ router.post("/verify-password", verifyMobileToken, verifyPassword);
 router.post("/check-email", verifyMobileToken, checkEmail);
 router.post("/update-email", verifyMobileToken, updateEmail);
 router.post("/deactivate", verifyMobileToken, deactivateAccount);
+router.post("/fcm-token", verifyMobileToken, updateFcmToken);
+router.post("/push-preference", verifyMobileToken, updatePushPreference);
 
 module.exports = router;

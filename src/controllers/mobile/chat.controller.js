@@ -1,6 +1,7 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const { isUserOnline } = require("../../sockets");
+const { sendPushNotification } = require("../../lib/push");
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const MAX_LIMIT = 50;
@@ -306,6 +307,17 @@ async function sendMessage(req, res) {
     );
 
     await touchLastSeen(db, myId);
+
+    const sender = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(myId) }, { projection: { name: 1 } });
+
+    sendPushNotification({
+      userId: otherId,
+      title: sender?.name || "New message",
+      body: previewText || "",
+      data: { type: "chat", conversationId },
+    }).catch((err) => console.error("Push notification error:", err));
 
     const savedMessage = { ...messageDoc, _id: result.insertedId, read: false };
 

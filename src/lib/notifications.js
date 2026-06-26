@@ -1,5 +1,6 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../config/db");
+const { sendPushNotification } = require("./push");
 
 // Records an in-app notification for a user. Callers fire this
 // fire-and-forget (same pattern as sendEmail) so a notification failure
@@ -18,6 +19,13 @@ async function createNotification({ userId, type, message, io }) {
   if (io) {
     io.to(`user:${userId}`).emit("notification_created", {});
   }
+
+  sendPushNotification({
+    userId,
+    title: "Linkaro",
+    body: message,
+    data: { type },
+  }).catch((err) => console.error("Push notification error:", err));
 }
 
 module.exports = { createNotification };
