@@ -51,7 +51,13 @@ async function sendPushNotification({ userId, title, body, data }) {
       token: user.fcmToken,
       notification: { title, body },
       data: stringData,
-      android: { priority: "high" },
+      android: {
+        priority: "high",
+        // Must match the channel created in MainActivity.kt (HIGH
+        // importance) — without this, Android may fall back to a
+        // default-importance channel that shows no heads-up popup.
+        notification: { channelId: "high_importance_channel" },
+      },
     });
   } catch (error) {
     // Token is no longer valid (app uninstalled, etc.) — clear it so future
