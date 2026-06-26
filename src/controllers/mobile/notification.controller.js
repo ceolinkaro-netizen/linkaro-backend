@@ -7,8 +7,16 @@ async function listNotifications(req, res) {
     const collection = db.collection("notifications");
     const userId = new ObjectId(req.decoded.id);
 
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+    // Older than a month is only worth showing if it's still unread —
+    // once read, it's served its purpose and just clutters the list.
     const notifications = await collection
-      .find({ userId })
+      .find({
+        userId,
+        $or: [{ createdAt: { $gte: oneMonthAgo } }, { read: false }],
+      })
       .sort({ createdAt: -1 })
       .limit(100)
       .toArray();
