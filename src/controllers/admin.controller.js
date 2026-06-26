@@ -367,6 +367,18 @@ async function getSubscriptions(req, res) {
     const subscriptions = await db
       .collection("subscriptions")
       .aggregate([
+        // Collapse renewals down to each user's latest submission per
+        // subscription type — that's the only row whose status still
+        // governs the user's live subscriptionStatus/badgeSubscriptionStatus,
+        // and the only one admin should be acting on from this table.
+        { $sort: { subscriptionDate: -1 } },
+        {
+          $group: {
+            _id: { userId: "$userId", subscriptionType: "$subscriptionType" },
+            doc: { $first: "$$ROOT" },
+          },
+        },
+        { $replaceRoot: { newRoot: "$doc" } },
         {
           $lookup: {
             from: "users",
@@ -403,7 +415,7 @@ async function getSubscriptions(req, res) {
             "user.badgeSubscriptionStatus": 1,
           },
         },
-        { $sort: { createdAt: -1 } },
+        { $sort: { subscriptionDate: -1 } },
       ])
       .toArray();
 
@@ -523,6 +535,22 @@ async function updateSubscriptionStatus(req, res) {
         { _id: new ObjectId(subscription.userId) },
         { $set: { [userStatusField]: status } },
       );
+
+    // The 1-month cycle starts when the subscription is actually approved,
+    // not when the user submitted it — otherwise a delayed review eats into
+    // the month they paid for.
+    if (status === "active") {
+      const subscriptionDate = new Date();
+      const subscriptionEndDate = new Date(subscriptionDate);
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+
+      await db
+        .collection("subscriptions")
+        .updateOne(
+          { _id: subscription._id },
+          { $set: { subscriptionDate, subscriptionEndDate } },
+        );
+    }
 
     // Send email notification
     if (user?.email) {
