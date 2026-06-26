@@ -289,10 +289,11 @@ async function subscription(req, res) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // subscriptionEndDate is intentionally not set here — it's only set once
+    // an admin approves the subscription (see updateSubscriptionStatus).
+    // Otherwise the cron that auto-expires subscriptions could flip a still-
+    // pending submission to "inactive" before anyone reviewed it.
     const subscriptionDate = new Date();
-
-    const subscriptionEndDate = new Date(subscriptionDate);
-    subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
 
     await db.collection("subscriptions").insertOne({
       userId: new ObjectId(req.decoded.id),
@@ -300,7 +301,6 @@ async function subscription(req, res) {
       paymentOption,
       amountPaid,
       subscriptionDate,
-      subscriptionEndDate,
       receiptImage,
     });
 
@@ -313,7 +313,6 @@ async function subscription(req, res) {
         paymentOption,
         amountPaid,
         subscriptionDate,
-        subscriptionEndDate,
         receiptImage,
       },
     });
