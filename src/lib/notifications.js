@@ -6,12 +6,13 @@ const { sendPushNotification } = require("./push");
 // fire-and-forget (same pattern as sendEmail) so a notification failure
 // never blocks the action that triggered it. Pass `io` (req.app.get("io"))
 // so the user's home screen badge updates in real time.
-async function createNotification({ userId, type, message, io }) {
+async function createNotification({ userId, type, message, io, jobId }) {
   const db = await getDb();
   await db.collection("notifications").insertOne({
     userId: new ObjectId(userId),
     type,
     message,
+    jobId: jobId ? new ObjectId(jobId) : null,
     read: false,
     createdAt: new Date(),
   });
@@ -24,7 +25,7 @@ async function createNotification({ userId, type, message, io }) {
     userId,
     title: "Linkaro",
     body: message,
-    data: { type },
+    data: jobId ? { type, jobId: jobId.toString() } : { type },
   }).catch((err) => console.error("Push notification error:", err));
 }
 

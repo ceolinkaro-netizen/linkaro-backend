@@ -36,6 +36,7 @@ async function listNotifications(req, res) {
         message: n.message,
         read: n.read,
         createdAt: n.createdAt,
+        jobId: n.jobId || null,
       })),
     });
   } catch (error) {

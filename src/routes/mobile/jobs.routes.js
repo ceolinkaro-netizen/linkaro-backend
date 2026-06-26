@@ -2,6 +2,7 @@ const express = require("express");
 const { verifyMobileToken } = require("../../middleware/mobileAuth");
 const {
   myJobs,
+  getJobById,
   postJob,
   nearbyJobs,
   assignProvider,
@@ -17,5 +18,6 @@ router.get("/nearby-jobs", verifyMobileToken, nearbyJobs);
 router.post("/:id/assign", verifyMobileToken, assignProvider);
 router.post("/:id/cancel", verifyMobileToken, cancelJob);
 router.post("/:id/complete", verifyMobileToken, completeJob);
+router.get("/:id", verifyMobileToken, getJobById);
 
 module.exports = router;

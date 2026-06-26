@@ -74,6 +74,40 @@ async function myJobs(req, res) {
   }
 }
 
+// Single job lookup — used to open a job's detail screen from a
+// notification (e.g. "you've been hired"), which only carries a jobId.
+async function getJobById(req, res) {
+  const { id } = req.params;
+
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Valid job id is required" });
+  }
+
+  try {
+    const db = await getDb();
+
+    const job = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    const myId = req.decoded.id;
+    const isPoster = job.userId.toString() === myId;
+    const isAssignedProvider =
+      job.assignedProviderId && job.assignedProviderId.toString() === myId;
+
+    if (!isPoster && !isAssignedProvider) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    return res.status(200).json({ success: true, job });
+  } catch (error) {
+    console.error("Get job by id error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 async function assignProvider(req, res) {
   const { id } = req.params;
   const { providerId } = req.body;
@@ -130,6 +164,7 @@ async function assignProvider(req, res) {
       type: "job_hired",
       message: `You've been hired for the job "${job.title}".`,
       io,
+      jobId: job._id,
     }).catch((err) => console.error("Notification create error:", err));
 
     if (provider.email) {
@@ -471,6 +506,7 @@ async function nearbyJobs(req, res) {
 
 module.exports = {
   myJobs,
+  getJobById,
   postJob,
   nearbyJobs,
   assignProvider,
