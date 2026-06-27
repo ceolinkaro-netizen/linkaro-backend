@@ -434,6 +434,13 @@ async function nearbyJobs(req, res) {
 
     const radiusKm = Number(req.query.radius) || 10;
 
+    const linkedConsumer = await db
+      .collection("users")
+      .findOne({ email: provider.email, role: "consumer" });
+
+    const excludedUserIds = [new ObjectId(req.decoded.id)];
+    if (linkedConsumer) excludedUserIds.push(linkedConsumer._id);
+
     const inRange = await db
       .collection("jobs")
       .aggregate([
@@ -443,7 +450,11 @@ async function nearbyJobs(req, res) {
             distanceField: "distanceMeters",
             maxDistance: radiusKm * 1000,
             spherical: true,
-            query: { status: "open", category: provider.category },
+            query: {
+              status: "open",
+              category: provider.category,
+              userId: { $nin: excludedUserIds },
+            },
           },
         },
       ])
