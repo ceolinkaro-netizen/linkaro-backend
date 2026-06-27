@@ -286,10 +286,12 @@ async function completeJob(req, res) {
         { $set: { rating: newRating }, $inc: { jobsCompleted: 1 } }
       );
 
+      const stars = "★".repeat(ratingNum) + "☆".repeat(5 - ratingNum);
+
       createNotification({
         userId: job.assignedProviderId,
         type: "job_completed",
-        message: `The job "${job.title}" has been marked as completed.`,
+        message: `The job "${job.title}" has been marked as completed. ${stars} Review: "${review.trim()}"`,
         io: req.app.get("io"),
       }).catch((err) => console.error("Notification create error:", err));
 
