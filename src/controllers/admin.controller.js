@@ -873,7 +873,30 @@ async function deleteManager(req, res) {
   }
 }
 
+async function checkExpiredJobs(req, res) {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${env.cronSecret}`) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const db = await getDb();
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const result = await db.collection("jobs").updateMany(
+      { status: "open", createdAt: { $lt: cutoff } },
+      { $set: { status: "expired" } }
+    );
+
+    return res.status(200).json({ success: true, expired: result.modifiedCount });
+  } catch (error) {
+    console.error("Check expired jobs error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
+  checkExpiredJobs,
   checkExpiredSubscriptions,
   createManager,
   deleteJob,

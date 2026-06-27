@@ -12,7 +12,7 @@ async function myJobs(req, res) {
 
     const jobs = await db
       .collection("jobs")
-      .find({ userId: new ObjectId(req.decoded.id) })
+      .find({ userId: new ObjectId(req.decoded.id), status: { $ne: "expired" } })
       .sort({ createdAt: -1 })
       .toArray();
 
