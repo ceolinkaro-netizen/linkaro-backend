@@ -92,6 +92,16 @@ async function ensureIndexes() {
 
   const notifications = db.collection("notifications");
   await notifications.createIndex({ userId: 1, createdAt: -1 });
+  // Guards against a duplicate "nearby job" notification if the client
+  // ever calls notify-nearby-match twice for the same job (e.g. a socket
+  // event redelivered after a reconnect) before the first insert lands.
+  await notifications.createIndex(
+    { userId: 1, jobId: 1, type: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { type: "job_nearby" },
+    }
+  );
 }
 
 module.exports = { getDb, getClientPromise, ensureIndexes };

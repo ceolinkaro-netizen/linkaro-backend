@@ -677,6 +677,15 @@ async function updateUser(req, res) {
     const prevStatus = user.registrationStatus;
     await db.collection("users").updateOne({ _id: new ObjectId(id) }, { $set: update });
 
+    // Tell the provider's own connected socket(s) to rejoin under the new
+    // category — room membership doesn't update itself just because the
+    // database did, and the socket may well stay connected for the rest
+    // of this session without ever reconnecting on its own.
+    if (update.category && update.category !== user.category) {
+      const ioForCategory = req.app.get("io");
+      if (ioForCategory) ioForCategory.to(`user:${id}`).emit("category_changed");
+    }
+
     // Send email if registrationStatus changed
     if (
       "registrationStatus" in update &&

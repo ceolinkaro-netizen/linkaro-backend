@@ -460,6 +460,15 @@ async function updateProfile(req, res) {
       .collection("users")
       .updateOne({ _id: new ObjectId(req.decoded.id) }, { $set: update });
 
+    // Tell the provider's own connected socket(s) to rejoin under the new
+    // category — room membership doesn't update itself just because the
+    // database did, and the socket may well stay connected for the rest
+    // of this session without ever reconnecting on its own.
+    if (update.category && update.category !== user.category) {
+      const io = req.app.get("io");
+      if (io) io.to(`user:${req.decoded.id}`).emit("category_changed");
+    }
+
     // Replaced images are now orphaned in Cloudinary — clean them up. Fired
     // without awaiting so the response isn't held up by the delete calls.
     const replacedImages = [
