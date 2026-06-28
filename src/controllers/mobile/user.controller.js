@@ -705,6 +705,32 @@ async function updatePushPreference(req, res) {
   }
 }
 
+async function updateLocation(req, res) {
+  const lat = Number(req.body.lat);
+  const lng = Number(req.body.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ message: "Valid lat and lng are required" });
+  }
+
+  try {
+    const db = await getDb();
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(req.decoded.id) },
+      {
+        $set: {
+          geo: { type: "Point", coordinates: [lng, lat] },
+          locationUpdatedAt: new Date(),
+        },
+      }
+    );
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Update location error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   me,
   listProviders,
@@ -720,4 +746,5 @@ module.exports = {
   deactivateAccount,
   updateFcmToken,
   updatePushPreference,
+  updateLocation,
 };
