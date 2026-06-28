@@ -481,7 +481,7 @@ async function signupProvider(req, res) {
     const lat = Number(latitude);
     const lng = Number(longitude);
     const geoFields = Number.isFinite(lat) && Number.isFinite(lng)
-      ? { latitude: lat, longitude: lng, geo: { type: "Point", coordinates: [lng, lat] } }
+      ? { geo: { type: "Point", coordinates: [lng, lat] } }
       : {};
 
     if (reactivateId) {

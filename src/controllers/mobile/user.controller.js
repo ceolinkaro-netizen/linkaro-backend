@@ -429,8 +429,6 @@ async function updateProfile(req, res) {
       const lat = Number(fields.latitude);
       const lng = Number(fields.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        update.latitude = lat;
-        update.longitude = lng;
         update.geo = { type: "Point", coordinates: [lng, lat] };
       }
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;

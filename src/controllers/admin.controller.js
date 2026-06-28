@@ -649,8 +649,6 @@ async function updateUser(req, res) {
         try {
           const coords = await geocodeAddressPakistan(update.address.street, update.address.city);
           if (coords) {
-            update.latitude = coords.latitude;
-            update.longitude = coords.longitude;
             update.geo = { type: "Point", coordinates: [coords.longitude, coords.latitude] };
           } else {
             console.warn(
