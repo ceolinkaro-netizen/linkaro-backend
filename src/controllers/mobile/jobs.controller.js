@@ -403,6 +403,57 @@ async function postJob(req, res) {
             Date.now() - lastSeenAt <= ONLINE_WINDOW_MS,
         });
       }
+
+      // Fire-and-forget geo fan-out — send push notifications to nearby active
+      // providers regardless of whether their app is open or closed.
+      (async () => {
+        const poster = await db
+          .collection("users")
+          .findOne(
+            { _id: new ObjectId(req.decoded.id) },
+            { projection: { email: 1 } }
+          );
+        const linkedProvider = poster?.email
+          ? await db
+              .collection("users")
+              .findOne({ email: poster.email, role: "provider" })
+          : null;
+
+        const providerQuery = {
+          role: "provider",
+          subscriptionStatus: "active",
+          category,
+          geo: {
+            $near: {
+              $geometry: jobDoc.geo,
+              $maxDistance: 15000,
+            },
+          },
+        };
+        if (linkedProvider) providerQuery._id = { $ne: linkedProvider._id };
+
+        const nearbyProviders = await db
+          .collection("users")
+          .find(providerQuery)
+          .project({ _id: 1 })
+          .limit(50)
+          .toArray();
+
+        await Promise.all(
+          nearbyProviders.map((p) =>
+            createNotification({
+              userId: p._id,
+              type: "job_nearby",
+              message: `A new job "${jobDoc.title}" was posted near you.`,
+              io: req.app.get("io"),
+              jobId: result.insertedId,
+              skipPush: false,
+            }).catch((err) =>
+              console.error("Job-nearby notification error:", err)
+            )
+          )
+        );
+      })().catch((err) => console.error("Job-post fan-out error:", err));
     }
 
     return res.status(201).json({ success: true, jobId: result.insertedId });
@@ -529,81 +580,11 @@ async function nearbyJobs(req, res) {
   }
 }
 
-// Called by the provider's own app the instant it locally determines (via
-// the category-scoped `job_posted` socket event + its own last-known GPS,
-// never sent to or stored by the server) that a newly-posted job is within
-// their radius. Records the match as a real in-app notification so it shows
-// up later in the Notifications screen — the push itself is skipped since
-// the client, by definition, is already connected and already showing its
-// own toast for this exact event.
-async function notifyNearbyJobMatch(req, res) {
-  const { id } = req.params;
-
-  if (!ObjectId.isValid(id)) {
-    return res.status(400).json({ message: "Valid job id is required" });
-  }
-
-  try {
-    const db = await getDb();
-
-    const provider = await db
-      .collection("users")
-      .findOne(
-        { _id: new ObjectId(req.decoded.id) },
-        { projection: { role: 1, category: 1 } }
-      );
-
-    if (!provider || provider.role !== "provider") {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    const job = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
-
-    if (!job) {
-      return res.status(404).json({ message: "Job not found" });
-    }
-    if (job.status !== "open" || job.category !== provider.category) {
-      return res.status(400).json({ message: "Job is not a valid match" });
-    }
-
-    const existing = await db.collection("notifications").findOne({
-      userId: new ObjectId(req.decoded.id),
-      jobId: job._id,
-      type: "job_nearby",
-    });
-    if (existing) {
-      return res.status(200).json({ success: true });
-    }
-
-    await createNotification({
-      userId: req.decoded.id,
-      type: "job_nearby",
-      message: `A new job "${job.title}" was posted near you.`,
-      io: req.app.get("io"),
-      jobId: job._id,
-      skipPush: true,
-    });
-
-    return res.status(200).json({ success: true });
-  } catch (error) {
-    // Two near-simultaneous calls for the same job (e.g. a redelivered
-    // socket event) can both pass the findOne check above before either
-    // insert lands — the unique index then rejects the second one. That's
-    // an expected, benign outcome here, not a real failure.
-    if (error.code === 11000) {
-      return res.status(200).json({ success: true });
-    }
-    console.error("Notify nearby job match error:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-}
-
 module.exports = {
   myJobs,
   getJobById,
   postJob,
   nearbyJobs,
-  notifyNearbyJobMatch,
   assignProvider,
   cancelJob,
   completeJob,

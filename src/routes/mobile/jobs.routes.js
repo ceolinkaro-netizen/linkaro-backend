@@ -5,7 +5,6 @@ const {
   getJobById,
   postJob,
   nearbyJobs,
-  notifyNearbyJobMatch,
   assignProvider,
   cancelJob,
   completeJob,
@@ -16,7 +15,6 @@ const router = express.Router();
 router.get("/my-jobs", verifyMobileToken, myJobs);
 router.post("/post-job", verifyMobileToken, postJob);
 router.get("/nearby-jobs", verifyMobileToken, nearbyJobs);
-router.post("/:id/notify-nearby-match", verifyMobileToken, notifyNearbyJobMatch);
 router.post("/:id/assign", verifyMobileToken, assignProvider);
 router.post("/:id/cancel", verifyMobileToken, cancelJob);
 router.post("/:id/complete", verifyMobileToken, completeJob);
