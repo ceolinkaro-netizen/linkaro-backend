@@ -2,7 +2,11 @@ const { ObjectId } = require("mongodb");
 const { getDb } = require("../../config/db");
 const { isUserOnline } = require("../../sockets");
 const { createNotification } = require("../../lib/notifications");
-const { sendEmail, jobHiredEmail, jobCompletedEmail } = require("../../lib/mailer");
+const {
+  sendEmail,
+  jobHiredEmail,
+  jobCompletedEmail,
+} = require("../../lib/mailer");
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 
@@ -12,7 +16,10 @@ async function myJobs(req, res) {
 
     const jobs = await db
       .collection("jobs")
-      .find({ userId: new ObjectId(req.decoded.id), status: { $ne: "expired" } })
+      .find({
+        userId: new ObjectId(req.decoded.id),
+        status: { $ne: "expired" },
+      })
       .sort({ createdAt: -1 })
       .toArray();
 
@@ -20,7 +27,7 @@ async function myJobs(req, res) {
       ...new Set(
         jobs
           .filter((job) => job.assignedProviderId)
-          .map((job) => job.assignedProviderId.toString())
+          .map((job) => job.assignedProviderId.toString()),
       ),
     ].map((id) => new ObjectId(id));
 
@@ -63,7 +70,8 @@ async function myJobs(req, res) {
         providerIsOnline:
           isUserOnline(job.assignedProviderId.toString()) ||
           now - lastSeenAt <= ONLINE_WINDOW_MS,
-        completedBy: job.status === "completed" ? provider.name ?? null : null,
+        completedBy:
+          job.status === "completed" ? (provider.name ?? null) : null,
       };
     });
 
@@ -103,7 +111,7 @@ async function getJobById(req, res) {
         .collection("users")
         .findOne(
           { _id: new ObjectId(myId) },
-          { projection: { role: 1, category: 1 } }
+          { projection: { role: 1, category: 1 } },
         );
       isEligibleProvider =
         requester?.role === "provider" && requester.category === job.category;
@@ -142,7 +150,9 @@ async function assignProvider(req, res) {
       return res.status(403).json({ message: "Access denied" });
     }
     if (job.status !== "open") {
-      return res.status(400).json({ message: "Job is not open for assignment" });
+      return res
+        .status(400)
+        .json({ message: "Job is not open for assignment" });
     }
 
     const provider = await db
@@ -161,7 +171,7 @@ async function assignProvider(req, res) {
           assignedProviderId: new ObjectId(providerId),
           assignedAt: new Date(),
         },
-      }
+      },
     );
 
     const io = req.app.get("io");
@@ -278,7 +288,7 @@ async function completeJob(req, res) {
           rating: ratingNum,
           review: review.trim(),
         },
-      }
+      },
     );
 
     if (job.assignedProviderId) {
@@ -286,17 +296,19 @@ async function completeJob(req, res) {
         .collection("users")
         .findOne(
           { _id: job.assignedProviderId },
-          { projection: { rating: 1, jobsCompleted: 1, name: 1, email: 1 } }
+          { projection: { rating: 1, jobsCompleted: 1, name: 1, email: 1 } },
         );
 
       const prevCount = provider?.jobsCompleted ?? 0;
       const prevRating = provider?.rating ?? 0;
       const newRating = (prevRating * prevCount + ratingNum) / (prevCount + 1);
 
-      await db.collection("users").updateOne(
-        { _id: job.assignedProviderId },
-        { $set: { rating: newRating }, $inc: { jobsCompleted: 1 } }
-      );
+      await db
+        .collection("users")
+        .updateOne(
+          { _id: job.assignedProviderId },
+          { $set: { rating: newRating }, $inc: { jobsCompleted: 1 } },
+        );
 
       const stars = "★".repeat(ratingNum) + "☆".repeat(5 - ratingNum);
 
@@ -368,7 +380,10 @@ async function postJob(req, res) {
 
     await db
       .collection("users")
-      .updateOne({ _id: new ObjectId(req.decoded.id) }, { $inc: { totalJobs: 1 } });
+      .updateOne(
+        { _id: new ObjectId(req.decoded.id) },
+        { $inc: { totalJobs: 1 } },
+      );
 
     if (jobDoc.geo) {
       const io = req.app.get("io");
@@ -377,7 +392,7 @@ async function postJob(req, res) {
           .collection("users")
           .findOne(
             { _id: new ObjectId(req.decoded.id) },
-            { projection: { name: 1, profileImage: 1, lastSeenAt: 1 } }
+            { projection: { name: 1, profileImage: 1, lastSeenAt: 1 } },
           );
         const lastSeenAt = consumer?.lastSeenAt
           ? new Date(consumer.lastSeenAt).getTime()
@@ -411,7 +426,7 @@ async function postJob(req, res) {
           .collection("users")
           .findOne(
             { _id: new ObjectId(req.decoded.id) },
-            { projection: { email: 1 } }
+            { projection: { email: 1 } },
           );
         const linkedProvider = poster?.email
           ? await db
@@ -449,9 +464,9 @@ async function postJob(req, res) {
               jobId: result.insertedId,
               skipPush: false,
             }).catch((err) =>
-              console.error("Job-nearby notification error:", err)
-            )
-          )
+              console.error("Job-nearby notification error:", err),
+            ),
+          ),
         );
       })().catch((err) => console.error("Job-post fan-out error:", err));
     }
@@ -534,9 +549,7 @@ async function nearbyJobs(req, res) {
       .find({ _id: { $in: consumerIds } })
       .project({ name: 1, profileImage: 1, lastSeenAt: 1 })
       .toArray();
-    const consumerMap = new Map(
-      consumers.map((c) => [c._id.toString(), c])
-    );
+    const consumerMap = new Map(consumers.map((c) => [c._id.toString(), c]));
 
     const now = Date.now();
 
