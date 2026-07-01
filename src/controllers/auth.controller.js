@@ -83,6 +83,7 @@ function me(req, res) {
     success: true,
     role: req.user.role,
     email: req.user.email,
+    name: req.user.name || null,
   });
 }
 
