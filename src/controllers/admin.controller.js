@@ -588,12 +588,26 @@ async function updateSubscriptionStatus(req, res) {
         rejected: "Your subscription request has been rejected.",
         fraud: "Your subscription has been flagged for review.",
       };
+      const io = req.app.get("io");
       createNotification({
         userId: user._id,
         type: "subscription_status",
         message: messages[status],
-        io: req.app.get("io"),
+        io,
       }).catch((err) => console.error("Notification create error:", err));
+
+      // Push real-time status to the provider's open app session so the home
+      // screen unlocks (or locks) immediately without waiting for a poll cycle.
+      if (io) {
+        io.to(`user:${subscription.userId.toString()}`).emit("subscription_updated", {
+          subscriptionStatus: isBadge
+            ? (user.subscriptionStatus ?? "inactive")
+            : status,
+          badgeSubscriptionStatus: isBadge
+            ? status
+            : (user.badgeSubscriptionStatus ?? "inactive"),
+        });
+      }
     }
 
     return res.status(200).json({ success: true, status });
