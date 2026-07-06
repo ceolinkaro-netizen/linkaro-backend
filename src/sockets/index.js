@@ -84,6 +84,25 @@ function initSocket(server) {
       if (!conversation) return;
       if (!conversation.participants.some((p) => p.toString() === userId)) return;
       socket.join(`conv:${conversationId}`);
+
+      // Immediately push the other participant's current live status so the
+      // chat screen never shows a stale snapshot from when the list was loaded.
+      const otherId = conversation.participants
+        .find((p) => p.toString() !== userId)
+        ?.toString();
+      if (otherId) {
+        socket.emit("presence", { userId: otherId, isOnline: isUserOnline(otherId) });
+      }
+    });
+
+    // Bulk presence query — client sends an array of userIds, server replies
+    // with their current live status from the in-memory onlineUsers map.
+    socket.on("get_presence", ({ userIds } = {}) => {
+      if (!Array.isArray(userIds)) return;
+      const snapshot = userIds
+        .filter((id) => typeof id === "string" && ObjectId.isValid(id))
+        .map((id) => ({ userId: id, isOnline: isUserOnline(id) }));
+      socket.emit("presence_snapshot", snapshot);
     });
 
     socket.on("leave_conversation", ({ conversationId } = {}) => {
