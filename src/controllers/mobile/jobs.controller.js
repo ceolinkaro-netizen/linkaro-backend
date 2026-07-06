@@ -402,11 +402,22 @@ async function postJob(req, res) {
           .collection("users")
           .findOne(
             { _id: new ObjectId(req.decoded.id) },
-            { projection: { name: 1, profileImage: 1, lastSeenAt: 1 } },
+            { projection: { name: 1, profileImage: 1, lastSeenAt: 1, email: 1 } },
           );
         const lastSeenAt = consumer?.lastSeenAt
           ? new Date(consumer.lastSeenAt).getTime()
           : 0;
+
+        // Find the linked provider account (same email, provider role) so clients
+        // can filter out jobs posted by their own linked consumer account.
+        const linkedProvider = consumer?.email
+          ? await db
+              .collection("users")
+              .findOne(
+                { email: consumer.email, role: "provider" },
+                { projection: { _id: 1 } },
+              )
+          : null;
 
         io.to(`category:${category}`).emit("job_posted", {
           _id: result.insertedId,
@@ -421,6 +432,7 @@ async function postJob(req, res) {
           status: jobDoc.status,
           createdAt: jobDoc.createdAt,
           consumerId: jobDoc.userId,
+          linkedProviderId: linkedProvider?._id?.toString() ?? null,
           consumerName: consumer?.name ?? null,
           consumerProfileImage: consumer?.profileImage ?? null,
           consumerIsOnline:
