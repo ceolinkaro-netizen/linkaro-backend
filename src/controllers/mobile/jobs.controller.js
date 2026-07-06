@@ -118,6 +118,16 @@ async function getJobById(req, res) {
     }
 
     if (!isPoster && !isAssignedProvider && !isEligibleProvider) {
+      if (job.status === "assigned") {
+        return res.status(403).json({
+          message: "This job has already been assigned to another provider",
+        });
+      }
+      if (job.status === "completed") {
+        return res.status(403).json({
+          message: "This job has already been completed",
+        });
+      }
       return res.status(403).json({ message: "Access denied" });
     }
 
