@@ -118,7 +118,7 @@ async function getJobById(req, res) {
     }
 
     if (!isPoster && !isAssignedProvider && !isEligibleProvider) {
-      if (job.status === "assigned") {
+      if (job.status === "in_progress") {
         return res.status(403).json({
           message: "This job has already been assigned to another provider",
         });
