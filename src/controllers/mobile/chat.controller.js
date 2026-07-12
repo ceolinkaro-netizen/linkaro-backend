@@ -126,7 +126,7 @@ async function getConversations(req, res) {
       const lastSeenAt = other?.lastSeenAt ? new Date(other.lastSeenAt).getTime() : 0;
 
       return {
-        conversationId: c._id,
+        conversationId: c._id.toString(),
         otherUserId: otherId,
         otherUserName: other?.name ?? null,
         otherUserProfileImage: other?.profileImage ?? null,
