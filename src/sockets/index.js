@@ -33,6 +33,11 @@ async function broadcastPresence(io, db, userId, isOnline) {
 function initSocket(server) {
   const io = new Server(server, {
     cors: { origin: true, credentials: true },
+    // Detect force-closed clients (app killed, network drop) faster.
+    // Default is pingInterval:25000 + pingTimeout:20000 = up to 45 s.
+    // At 8 s interval + 10 s timeout the server notices within ~18 s.
+    pingInterval: 8000,
+    pingTimeout: 10000,
   });
 
   io.use((socket, next) => {
