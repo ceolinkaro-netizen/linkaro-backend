@@ -3,7 +3,6 @@ const { getDb } = require("../../config/db");
 const { isUserOnline } = require("../../sockets");
 const { sendPushNotification } = require("../../lib/push");
 
-const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 20;
 const VALID_TYPES = ["text", "image", "location", "voice"];
@@ -27,17 +26,15 @@ async function buildConversationSummary(db, conversation, forUserId) {
     .collection("users")
     .findOne(
       { _id: new ObjectId(otherId) },
-      { projection: { name: 1, profileImage: 1, lastSeenAt: 1 } }
+      { projection: { name: 1, profileImage: 1 } }
     );
-
-  const lastSeenAt = other?.lastSeenAt ? new Date(other.lastSeenAt).getTime() : 0;
 
   return {
     conversationId: conversation._id.toString(),
     otherUserId: otherId,
     otherUserName: other?.name ?? null,
     otherUserProfileImage: other?.profileImage ?? null,
-    isOnline: isUserOnline(otherId) || Date.now() - lastSeenAt <= ONLINE_WINDOW_MS,
+    isOnline: isUserOnline(otherId),
     lastMessage: conversation.lastMessage,
     unreadCount: conversation.unreadCount?.[forUserId] ?? 0,
     updatedAt: conversation.updatedAt,
@@ -112,25 +109,22 @@ async function getConversations(req, res) {
     const users = await db
       .collection("users")
       .find({ _id: { $in: otherIds } })
-      .project({ name: 1, profileImage: 1, lastSeenAt: 1 })
+      .project({ name: 1, profileImage: 1 })
       .toArray();
     const userMap = new Map(users.map((u) => [u._id.toString(), u]));
-
-    const now = Date.now();
 
     const result = conversations.map((c) => {
       const otherId = c.participants
         .find((p) => p.toString() !== myId)
         .toString();
       const other = userMap.get(otherId);
-      const lastSeenAt = other?.lastSeenAt ? new Date(other.lastSeenAt).getTime() : 0;
 
       return {
         conversationId: c._id.toString(),
         otherUserId: otherId,
         otherUserName: other?.name ?? null,
         otherUserProfileImage: other?.profileImage ?? null,
-        isOnline: isUserOnline(otherId) || now - lastSeenAt <= ONLINE_WINDOW_MS,
+        isOnline: isUserOnline(otherId),
         lastMessage: c.lastMessage,
         unreadCount: c.unreadCount?.[myId] ?? 0,
         updatedAt: c.updatedAt,

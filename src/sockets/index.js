@@ -28,6 +28,11 @@ async function broadcastPresence(io, db, userId, isOnline) {
   otherIds.forEach((id) => {
     io.to(`user:${id}`).emit("presence", { userId, isOnline });
   });
+
+  // Also notify any socket that has subscribed to this user's presence via
+  // watch_presence (e.g. consumer home screen showing providers they haven't
+  // chatted with — those users are not in the conversations list above).
+  io.to(`presence:${userId}`).emit("presence", { userId, isOnline });
 }
 
 function initSocket(server) {
@@ -83,6 +88,37 @@ function initSocket(server) {
 
     // convId -> otherId cache so typing fan-out doesn't need a DB hit per keystroke
     const convOtherIds = {};
+
+    // Proactive logout — client emits this before socket.disconnect() so the
+    // server marks the user offline and broadcasts presence immediately,
+    // before the transport close races the DISCONNECT packet.
+    socket.on("logout", async () => {
+      const set = onlineUsers.get(userId);
+      if (!set) return;
+      set.delete(socket.id);
+      if (set.size === 0) {
+        onlineUsers.delete(userId);
+        await db
+          .collection("users")
+          .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
+        await broadcastPresence(io, db, userId, false);
+      }
+    });
+
+    // Presence watch — client joins presence:X rooms for users whose online
+    // status it wants to track (e.g. providers shown on consumer home screen
+    // that the consumer hasn't necessarily chatted with).
+    socket.on("watch_presence", ({ userIds } = {}) => {
+      if (!Array.isArray(userIds)) return;
+      userIds
+        .filter((id) => typeof id === "string" && ObjectId.isValid(id))
+        .forEach((id) => socket.join(`presence:${id}`));
+    });
+
+    socket.on("unwatch_presence", ({ userIds } = {}) => {
+      if (!Array.isArray(userIds)) return;
+      userIds.forEach((id) => socket.leave(`presence:${id}`));
+    });
 
     socket.on("join_conversation", async ({ conversationId } = {}) => {
       if (!conversationId || !ObjectId.isValid(conversationId)) return;
