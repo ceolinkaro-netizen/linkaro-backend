@@ -7,16 +7,11 @@ const { VALID_CATEGORIES } = require("../../constants/categories");
 const { isUserOnline } = require("../../sockets");
 const { deleteManyFromCloudinary } = require("../../lib/cloudinary");
 
-const ONLINE_WINDOW_MS = 2 * 60 * 1000;
-
 function withOnlineStatus(user) {
   const { lastSeenAt, ...rest } = user;
-  const lastSeen = lastSeenAt ? new Date(lastSeenAt).getTime() : 0;
   return {
     ...rest,
-    isOnline:
-      isUserOnline(user._id.toString()) ||
-      Date.now() - lastSeen <= ONLINE_WINDOW_MS,
+    isOnline: isUserOnline(user._id.toString()),
   };
 }
 
