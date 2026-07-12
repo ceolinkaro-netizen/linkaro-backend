@@ -14,7 +14,7 @@ const VALID_ROLES = ["consumer", "provider"];
 const EMAIL_REGEX = /^[\w\-.]+@([\w-]+\.)+[\w-]{2,}$/;
 
 async function checkAvailability(req, res) {
-  const { email, cnic, phone, role } = req.body;
+  const { email, cnic, phone, dialCode, role } = req.body;
 
   if (!email || !cnic || !role) {
     return res
@@ -46,9 +46,11 @@ async function checkAvailability(req, res) {
     }
 
     if (phone) {
+      const prefix = dialCode || "+92";
+      const fullPhone = `${prefix}${phone}`;
       const existingPhone = await db
         .collection("users")
-        .findOne({ phone: `+92${phone}`, role });
+        .findOne({ phone: fullPhone, role });
       if (existingPhone && !existingPhone._id.equals(reactivateId)) {
         return res
           .status(409)
@@ -262,7 +264,17 @@ async function sendOtp(req, res) {
 }
 
 async function signupConsumer(req, res) {
-  const { fullName, phone, email, cnic, password, profileImage } = req.body;
+  const {
+    fullName,
+    phone,
+    dialCode,
+    countryCode,
+    country,
+    email,
+    cnic,
+    password,
+    profileImage,
+  } = req.body;
 
   if (!fullName || !phone || !email || !cnic || !password) {
     return res
@@ -276,16 +288,6 @@ async function signupConsumer(req, res) {
     return res.status(400).json({ message: "Invalid email address" });
   }
 
-  if (String(phone).length !== 10) {
-    return res
-      .status(400)
-      .json({ message: "Phone must be 10 digits (without +92)" });
-  }
-
-  if (String(cnic).length !== 13) {
-    return res.status(400).json({ message: "CNIC must be 13 digits" });
-  }
-
   if (password.length < 6) {
     return res
       .status(400)
@@ -295,6 +297,9 @@ async function signupConsumer(req, res) {
   if (!profileImage) {
     return res.status(400).json({ message: "Profile photo is required" });
   }
+
+  const prefix = dialCode || "+92";
+  const fullPhone = `${prefix}${phone}`;
 
   try {
     const db = await getDb();
@@ -323,7 +328,7 @@ async function signupConsumer(req, res) {
 
     const existingPhone = await db
       .collection("users")
-      .findOne({ phone: `+92${phone}`, role: "consumer" });
+      .findOne({ phone: fullPhone, role: "consumer" });
     if (existingPhone && !existingPhone._id.equals(reactivateId)) {
       return res
         .status(409)
@@ -338,7 +343,9 @@ async function signupConsumer(req, res) {
         {
           $set: {
             name: fullName,
-            phone: `+92${phone}`,
+            phone: fullPhone,
+            dialCode: prefix,
+            countryCode: countryCode || "PK",
             cnic,
             password: hashedPassword,
             profileImage,
@@ -350,7 +357,9 @@ async function signupConsumer(req, res) {
     } else {
       await db.collection("users").insertOne({
         name: fullName,
-        phone: `+92${phone}`,
+        phone: fullPhone,
+        dialCode: prefix,
+        countryCode: countryCode || "PK",
         email: email.toLowerCase().trim(),
         cnic,
         password: hashedPassword,
@@ -375,6 +384,10 @@ async function signupProvider(req, res) {
   const {
     name,
     phone,
+    dialCode,
+    countryCode,
+    country,
+    state,
     email,
     street,
     city,
@@ -412,16 +425,6 @@ async function signupProvider(req, res) {
     return res.status(400).json({ message: "Invalid email address" });
   }
 
-  if (String(phone).length !== 10) {
-    return res
-      .status(400)
-      .json({ message: "Phone must be 10 digits (without +92)" });
-  }
-
-  if (String(cnic).length !== 13) {
-    return res.status(400).json({ message: "CNIC must be 13 digits" });
-  }
-
   if (password.length < 6) {
     return res
       .status(400)
@@ -441,6 +444,9 @@ async function signupProvider(req, res) {
       message: "Profile photo, CNIC front and back images are required",
     });
   }
+
+  const prefix = dialCode || "+92";
+  const fullPhone = `${prefix}${phone}`;
 
   try {
     const db = await getDb();
@@ -469,7 +475,7 @@ async function signupProvider(req, res) {
 
     const existingPhone = await db
       .collection("users")
-      .findOne({ phone: `+92${phone}`, role: "provider" });
+      .findOne({ phone: fullPhone, role: "provider" });
     if (existingPhone && !existingPhone._id.equals(reactivateId)) {
       return res
         .status(409)
@@ -483,6 +489,14 @@ async function signupProvider(req, res) {
     const geoFields = Number.isFinite(lat) && Number.isFinite(lng)
       ? { geo: { type: "Point", coordinates: [lng, lat] } }
       : {};
+
+    const addressObj = {
+      street,
+      city,
+      zip,
+      state: typeof state === "string" ? state : "",
+      country: typeof country === "string" ? country : "Pakistan",
+    };
 
     if (reactivateId) {
       // Reactivating with a different category invalidates the services
@@ -507,8 +521,10 @@ async function signupProvider(req, res) {
         {
           $set: {
             name,
-            phone: `+92${phone}`,
-            address: { street, city, zip },
+            phone: fullPhone,
+            dialCode: prefix,
+            countryCode: countryCode || "PK",
+            address: addressObj,
             cnic,
             gender,
             category,
@@ -527,9 +543,11 @@ async function signupProvider(req, res) {
     } else {
       await db.collection("users").insertOne({
         name,
-        phone: `+92${phone}`,
+        phone: fullPhone,
+        dialCode: prefix,
+        countryCode: countryCode || "PK",
         email: email.toLowerCase().trim(),
-        address: { street, city, zip },
+        address: addressObj,
         cnic,
         gender,
         category,

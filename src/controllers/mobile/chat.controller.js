@@ -33,7 +33,7 @@ async function buildConversationSummary(db, conversation, forUserId) {
   const lastSeenAt = other?.lastSeenAt ? new Date(other.lastSeenAt).getTime() : 0;
 
   return {
-    conversationId: conversation._id,
+    conversationId: conversation._id.toString(),
     otherUserId: otherId,
     otherUserName: other?.name ?? null,
     otherUserProfileImage: other?.profileImage ?? null,
@@ -323,9 +323,25 @@ async function sendMessage(req, res) {
 
     const io = req.app.get("io");
     if (io) {
+      // Explicitly stringify ObjectId fields so socket.io always emits plain
+      // hex strings regardless of the BSON version's toJSON() behaviour.
+      const messageToEmit = {
+        _id: result.insertedId.toString(),
+        conversationId: conversationId,
+        senderId: myId,
+        type,
+        text: savedMessage.text,
+        attachmentUrl: savedMessage.attachmentUrl,
+        duration: savedMessage.duration,
+        latitude: savedMessage.latitude,
+        longitude: savedMessage.longitude,
+        address: savedMessage.address,
+        createdAt: now.toISOString(),
+        read: false,
+      };
       io.to(`conv:${conversationId}`).emit("new_message", {
         conversationId,
-        message: savedMessage,
+        message: messageToEmit,
       });
 
       const updatedConversation = await db

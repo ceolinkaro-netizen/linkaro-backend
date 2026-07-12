@@ -374,12 +374,15 @@ async function updateProfile(req, res) {
     if (fields.gender) update.gender = fields.gender;
     if (fields.profileImage) update.profileImage = fields.profileImage;
 
-    // Phone — store with +92 prefix
+    // Phone — store full E.164 number (dialCode + localNumber)
     if (fields.phone) {
-      update.phone = fields.phone.startsWith("+92")
+      const prefix = fields.dialCode || user.dialCode || "+92";
+      update.phone = fields.phone.startsWith(prefix)
         ? fields.phone
-        : `+92${fields.phone}`;
+        : `${prefix}${fields.phone}`;
+      update.dialCode = prefix;
     }
+    if (fields.countryCode) update.countryCode = fields.countryCode;
 
     // Uniqueness checks (excluding this user, scoped to their role)
     if (update.cnic && update.cnic !== user.cnic) {
@@ -405,12 +408,14 @@ async function updateProfile(req, res) {
     }
 
     // Address fields
-    if (fields.street || fields.city || fields.zip) {
+    if (fields.street || fields.city || fields.zip || fields.state !== undefined || fields.country) {
       const existing = user.address || {};
       update.address = {
         street: fields.street ?? existing.street ?? "",
         city: fields.city ?? existing.city ?? "",
         zip: fields.zip ?? existing.zip ?? "",
+        state: fields.state ?? existing.state ?? "",
+        country: fields.country ?? existing.country ?? "Pakistan",
       };
     }
 

@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { getDb } = require("../config/db");
 const env = require("../config/env");
+const { sendEmail, otpEmail } = require("../lib/mailer");
 
 const ROLE_ROUTES = {
   admin: "/admin/dashboard",
@@ -68,6 +69,54 @@ async function login(req, res) {
   }
 }
 
+async function sendOtp(req, res) {
+  const { email, password, category } = req.body;
+
+  if (!email || !password || !category) {
+    return res.status(400).json({ message: "Email, password and category are required" });
+  }
+
+  if (!ROLE_ROUTES[category]) {
+    return res.status(400).json({ message: "Invalid category selected" });
+  }
+
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    const isHashed = /^\$2[aby]\$/.test(user.password);
+    const passwordMatch = isHashed
+      ? await bcrypt.compare(password, user.password)
+      : password === user.password;
+
+    if (!passwordMatch) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    if (user.role !== category) {
+      return res.status(403).json({ message: "You don't have access to this role" });
+    }
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+    await sendEmail({
+      to: user.email,
+      subject: "Your Linkaro login code",
+      html: otpEmail(otp),
+      text: `Your Linkaro login verification code is: ${otp}. It expires in 10 minutes.`,
+    });
+
+    return res.status(200).json({ success: true, otp });
+  } catch (error) {
+    console.error("Send OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 function logout(req, res) {
   const isProduction = env.nodeEnv === "production";
   const sameSite = isProduction ? "None" : "Lax";
@@ -87,4 +136,4 @@ function me(req, res) {
   });
 }
 
-module.exports = { login, logout, me };
+module.exports = { login, sendOtp, logout, me };

@@ -10,7 +10,7 @@ const {
 } = require("../lib/mailer");
 const { createNotification } = require("../lib/notifications");
 const { uploadToCloudinary } = require("../lib/cloudinary");
-const { geocodeAddressPakistan } = require("../lib/geocoding");
+const { geocodeAddress } = require("../lib/geocoding");
 
 const BLOCKED_USER_FIELDS = [
   "password", "role", "subscriptionStatus", "badgeSubscriptionStatus",
@@ -634,15 +634,20 @@ async function updateUser(req, res) {
     if (fields.cnic)   update.cnic   = fields.cnic;
 
     if (fields.phone) {
-      update.phone = fields.phone.startsWith("+92") ? fields.phone : `+92${fields.phone}`;
+      const prefix = fields.dialCode || user.dialCode || "+92";
+      update.phone = fields.phone.startsWith(prefix) ? fields.phone : `${prefix}${fields.phone}`;
+      update.dialCode = prefix;
     }
+    if (fields.countryCode) update.countryCode = fields.countryCode;
 
-    if (fields.street || fields.city || fields.zip) {
+    if (fields.street || fields.city || fields.zip || fields.state !== undefined || fields.country) {
       const existing = user.address || {};
       update.address = {
-        street: fields.street ?? existing.street ?? "",
-        city:   fields.city   ?? existing.city   ?? "",
-        zip:    fields.zip    ?? existing.zip    ?? "",
+        street:  fields.street  ?? existing.street  ?? "",
+        city:    fields.city    ?? existing.city    ?? "",
+        zip:     fields.zip     ?? existing.zip     ?? "",
+        state:   fields.state   ?? existing.state   ?? "",
+        country: fields.country ?? existing.country ?? "Pakistan",
       };
     }
 
@@ -655,18 +660,18 @@ async function updateUser(req, res) {
       if (fields.cnicBackImage)  update.cnicBackImage  = fields.cnicBackImage;
       if (typeof fields.about === "string") update.about = fields.about.trim();
 
-      // Re-derive the coordinates from the new address — same approach the
-      // mobile app's edit-profile screen uses (geocode street+city, keep
-      // the result only if it lands inside Pakistan). Coordinates are never
-      // accepted directly from the request.
+      // Re-derive coordinates from the updated address using the user's country.
       if (update.address?.street && update.address?.city) {
         try {
-          const coords = await geocodeAddressPakistan(update.address.street, update.address.city);
+          const countryName = update.address.country || "Pakistan";
+          const countryCode = update.countryCode || user.countryCode || "PK";
+          const state = update.address.state || "";
+          const coords = await geocodeAddress(update.address.street, update.address.city, countryName, countryCode, state);
           if (coords) {
             update.geo = { type: "Point", coordinates: [coords.longitude, coords.latitude] };
           } else {
             console.warn(
-              `Geocoding returned no usable result for "${update.address.street}, ${update.address.city}" (user ${id})`
+              `Geocoding returned no usable result for "${update.address.street}, ${update.address.city}, ${countryName}" (user ${id})`
             );
           }
         } catch (geoError) {
@@ -674,7 +679,7 @@ async function updateUser(req, res) {
         }
       } else if (fields.street || fields.city) {
         console.warn(
-          `Skipped geocoding for user ${id} — street and city are both required (got street="${update.address?.street}", city="${update.address?.city}")`
+          `Skipped geocoding for user ${id} — street and city are both required`
         );
       }
     }
@@ -794,9 +799,9 @@ async function createManager(req, res) {
     const db = await getDb();
     const normalizedEmail = email.toLowerCase().trim();
 
-    const existing = await db.collection("users").findOne({ email: normalizedEmail });
+    const existing = await db.collection("users").findOne({ email: normalizedEmail, role });
     if (existing) {
-      return res.status(409).json({ message: "Email is already registered" });
+      return res.status(409).json({ message: `This email is already registered as ${role}` });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -841,18 +846,21 @@ async function updateManager(req, res) {
     if (name) update.name = name.trim();
     if (role) update.role = role;
 
-    if (email) {
-      const normalizedEmail = email.toLowerCase().trim();
-      if (normalizedEmail !== manager.email) {
-        const existing = await db
-          .collection("users")
-          .findOne({ email: normalizedEmail, _id: { $ne: manager._id } });
-        if (existing) {
-          return res.status(409).json({ message: "Email is already registered" });
-        }
+    const effectiveEmail = email ? email.toLowerCase().trim() : manager.email;
+    const effectiveRole = role || manager.role;
+    const emailChanged = effectiveEmail !== manager.email;
+    const roleChanged = role && role !== manager.role;
+
+    if (emailChanged || roleChanged) {
+      const existing = await db
+        .collection("users")
+        .findOne({ email: effectiveEmail, role: effectiveRole, _id: { $ne: manager._id } });
+      if (existing) {
+        return res.status(409).json({ message: `This email is already registered as ${effectiveRole}` });
       }
-      update.email = normalizedEmail;
     }
+
+    if (email) update.email = effectiveEmail;
 
     if (password) {
       update.password = await bcrypt.hash(password, 10);
