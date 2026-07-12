@@ -81,6 +81,9 @@ function initSocket(server) {
       socket.join(`category:${user.category}`);
     });
 
+    // convId -> otherId cache so typing fan-out doesn't need a DB hit per keystroke
+    const convOtherIds = {};
+
     socket.on("join_conversation", async ({ conversationId } = {}) => {
       if (!conversationId || !ObjectId.isValid(conversationId)) return;
       const conversation = await db
@@ -90,11 +93,15 @@ function initSocket(server) {
       if (!conversation.participants.some((p) => p.toString() === userId)) return;
       socket.join(`conv:${conversationId}`);
 
-      // Immediately push the other participant's current live status so the
-      // chat screen never shows a stale snapshot from when the list was loaded.
       const otherId = conversation.participants
         .find((p) => p.toString() !== userId)
         ?.toString();
+
+      // Cache for typing fan-out
+      if (otherId) convOtherIds[conversationId] = otherId;
+
+      // Immediately push the other participant's current live status so the
+      // chat screen never shows a stale snapshot from when the list was loaded.
       if (otherId) {
         socket.emit("presence", { userId: otherId, isOnline: isUserOnline(otherId) });
       }
@@ -117,12 +124,20 @@ function initSocket(server) {
 
     socket.on("typing", ({ conversationId, isTyping, kind } = {}) => {
       if (!conversationId || !ObjectId.isValid(conversationId)) return;
-      socket.to(`conv:${conversationId}`).emit("typing", {
+      const payload = {
         conversationId,
         userId,
         isTyping: !!isTyping,
         kind: kind === "voice" ? "voice" : "text",
-      });
+      };
+      // Deliver to the open chat screen (conv room, excludes sender)
+      socket.to(`conv:${conversationId}`).emit("typing", payload);
+      // Also deliver to the recipient's user room so the inbox can show
+      // the typing/recording indicator without joining every conv room.
+      const recipientId = convOtherIds[conversationId];
+      if (recipientId) {
+        io.to(`user:${recipientId}`).emit("typing", payload);
+      }
     });
 
     socket.on("mark_read", async ({ conversationId } = {}) => {
