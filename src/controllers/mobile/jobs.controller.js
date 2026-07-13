@@ -111,10 +111,10 @@ async function getJobById(req, res) {
         .collection("users")
         .findOne(
           { _id: new ObjectId(myId) },
-          { projection: { role: 1, category: 1 } },
+          { projection: { role: 1, categories: 1 } },
         );
       isEligibleProvider =
-        requester?.role === "provider" && requester.category === job.category;
+        requester?.role === "provider" && requester.categories?.includes(job.category);
     }
 
     if (!isPoster && !isAssignedProvider && !isEligibleProvider) {
@@ -554,7 +554,7 @@ async function nearbyJobs(req, res) {
             spherical: true,
             query: {
               status: "open",
-              category: provider.category,
+              category: { $in: provider.categories || [] },
               userId: { $nin: excludedUserIds },
             },
           },

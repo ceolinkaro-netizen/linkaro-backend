@@ -88,10 +88,12 @@ function initSocket(server) {
         .collection("users")
         .findOne(
           { _id: new ObjectId(userId) },
-          { projection: { category: 1, role: 1 } }
+          { projection: { categories: 1, category: 1, role: 1 } }
         );
-      if (user?.role !== "provider" || !user.category) return;
-      socket.join(`category:${user.category}`);
+      if (user?.role !== "provider") return;
+      const cats = user.categories?.length ? user.categories : (user.category ? [user.category] : []);
+      if (!cats.length) return;
+      cats.forEach((cat) => socket.join(`category:${cat}`));
     });
 
     // convId -> otherId cache so typing fan-out doesn't need a DB hit per keystroke

@@ -346,7 +346,7 @@ async function getSubscription(req, res) {
             "user.name": 1,
             "user.email": 1,
             "user.phone": 1,
-            "user.category": 1,
+            "user.categories": 1,
             "user.gender": 1,
             "user.address": 1,
             "user.cnic": 1,
@@ -418,7 +418,7 @@ async function getSubscriptions(req, res) {
             "user.name": 1,
             "user.email": 1,
             "user.phone": 1,
-            "user.category": 1,
+            "user.categories": 1,
             "user.gender": 1,
             "user.address": 1,
             "user.cnic": 1,
@@ -655,7 +655,7 @@ async function updateUser(req, res) {
     if (fields.registrationStatus !== undefined && fields.registrationStatus !== null) update.registrationStatus = fields.registrationStatus;
 
     if (user.role === "provider") {
-      if (fields.category)       update.category       = fields.category;
+      if (Array.isArray(fields.categories) && fields.categories.length > 0) update.categories = fields.categories;
       if (fields.cnicFrontImage) update.cnicFrontImage = fields.cnicFrontImage;
       if (fields.cnicBackImage)  update.cnicBackImage  = fields.cnicBackImage;
       if (typeof fields.about === "string") update.about = fields.about.trim();
@@ -700,9 +700,13 @@ async function updateUser(req, res) {
     // category — room membership doesn't update itself just because the
     // database did, and the socket may well stay connected for the rest
     // of this session without ever reconnecting on its own.
-    if (update.category && update.category !== user.category) {
-      const ioForCategory = req.app.get("io");
-      if (ioForCategory) ioForCategory.to(`user:${id}`).emit("category_changed");
+    if (update.categories) {
+      const oldSorted = [...(user.categories || (user.category ? [user.category] : []))].sort();
+      const newSorted = [...update.categories].sort();
+      if (JSON.stringify(oldSorted) !== JSON.stringify(newSorted)) {
+        const ioForCategory = req.app.get("io");
+        if (ioForCategory) ioForCategory.to(`user:${id}`).emit("category_changed");
+      }
     }
 
     // Send email if registrationStatus changed

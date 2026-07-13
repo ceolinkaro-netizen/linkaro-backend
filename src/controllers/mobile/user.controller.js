@@ -92,7 +92,7 @@ async function listProviders(req, res) {
           $project: {
             name: 1,
             profileImage: 1,
-            category: 1,
+            categories: 1,
             address: 1,
             badgeSubscriptionStatus: 1,
             rating: 1,
@@ -417,11 +417,11 @@ async function updateProfile(req, res) {
     // Provider-only fields
     if (user.role === "provider") {
       if (fields.email) update.email = fields.email.toLowerCase().trim();
-      if (fields.category) {
-        if (!VALID_CATEGORIES.includes(fields.category)) {
-          return res.status(400).json({ message: "Invalid category" });
+      if (Array.isArray(fields.categories) && fields.categories.length > 0) {
+        if (!fields.categories.every((c) => VALID_CATEGORIES.includes(c))) {
+          return res.status(400).json({ message: "One or more invalid categories" });
         }
-        update.category = fields.category;
+        update.categories = fields.categories;
       }
       if (typeof fields.about === "string") {
         update.about = fields.about.trim();
@@ -439,20 +439,24 @@ async function updateProfile(req, res) {
       return res.status(400).json({ message: "No fields to update" });
     }
 
-    // Changing category invalidates the services the provider posted under
-    // their old one — wipe them (and their images) before applying the change.
-    if (update.category && update.category !== user.category) {
-      const oldServices = await db
-        .collection("providerServices")
-        .find({ providerId: user._id })
-        .toArray();
-
-      if (oldServices.length > 0) {
-        const allImages = oldServices.flatMap((s) => s.images || []);
-        deleteManyFromCloudinary(allImages);
-        await db
+    // Removing categories invalidates services posted under them — only
+    // delete services for categories that are no longer in the provider's list.
+    if (update.categories) {
+      const oldCategories = user.categories || (user.category ? [user.category] : []);
+      const removedCategories = oldCategories.filter((c) => !update.categories.includes(c));
+      if (removedCategories.length > 0) {
+        const oldServices = await db
           .collection("providerServices")
-          .deleteMany({ providerId: user._id });
+          .find({ providerId: user._id, category: { $in: removedCategories } })
+          .toArray();
+
+        if (oldServices.length > 0) {
+          const allImages = oldServices.flatMap((s) => s.images || []);
+          deleteManyFromCloudinary(allImages);
+          await db
+            .collection("providerServices")
+            .deleteMany({ providerId: user._id, category: { $in: removedCategories } });
+        }
       }
     }
 
@@ -464,9 +468,13 @@ async function updateProfile(req, res) {
     // category — room membership doesn't update itself just because the
     // database did, and the socket may well stay connected for the rest
     // of this session without ever reconnecting on its own.
-    if (update.category && update.category !== user.category) {
-      const io = req.app.get("io");
-      if (io) io.to(`user:${req.decoded.id}`).emit("category_changed");
+    if (update.categories) {
+      const oldSorted = [...(user.categories || (user.category ? [user.category] : []))].sort();
+      const newSorted = [...update.categories].sort();
+      if (JSON.stringify(oldSorted) !== JSON.stringify(newSorted)) {
+        const io = req.app.get("io");
+        if (io) io.to(`user:${req.decoded.id}`).emit("category_changed");
+      }
     }
 
     // Replaced images are now orphaned in Cloudinary — clean them up. Fired

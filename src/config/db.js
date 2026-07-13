@@ -47,16 +47,16 @@ async function ensureIndexes() {
 
   await jobs.createIndex({ geo: "2dsphere" });
 
-  // Providers used to support multiple categories; backfill the new
-  // single-value `category` field from the old `categories` array.
+  // Backfill `categories` array from the legacy single `category` string
+  // for providers who haven't been migrated yet.
   const users = db.collection("users");
   await users.updateMany(
     {
       role: "provider",
-      categories: { $exists: true, $ne: [] },
-      category: { $exists: false },
+      category: { $exists: true, $type: "string" },
+      categories: { $exists: false },
     },
-    [{ $set: { category: { $arrayElemAt: ["$categories", 0] } } }]
+    [{ $set: { categories: ["$category"] } }]
   );
 
   await jobs.createIndex({ userId: 1, createdAt: -1 });

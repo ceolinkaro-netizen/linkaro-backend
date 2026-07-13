@@ -395,7 +395,7 @@ async function signupProvider(req, res) {
     zip,
     password,
     gender,
-    category,
+    categories,
     about,
     latitude,
     longitude,
@@ -415,7 +415,7 @@ async function signupProvider(req, res) {
     !zip ||
     !password ||
     !gender ||
-    !category
+    !Array.isArray(categories) || categories.length === 0
   ) {
     return res.status(400).json({ message: "All fields are required" });
   }
@@ -435,8 +435,8 @@ async function signupProvider(req, res) {
     return res.status(400).json({ message: "Gender must be Male or Female" });
   }
 
-  if (!VALID_CATEGORIES.includes(category)) {
-    return res.status(400).json({ message: "Invalid category" });
+  if (!categories.every((c) => VALID_CATEGORIES.includes(c))) {
+    return res.status(400).json({ message: "One or more invalid categories" });
   }
 
   if (!profileImage || !cnicFrontImage || !cnicBackImage) {
@@ -499,12 +499,13 @@ async function signupProvider(req, res) {
     };
 
     if (reactivateId) {
-      // Reactivating with a different category invalidates the services
-      // posted under the old one — wipe them (and their images) first.
-      if (existing.category && existing.category !== category) {
+      // Reactivating: delete services for categories that are no longer selected.
+      const oldCategories = existing.categories || (existing.category ? [existing.category] : []);
+      const removedCategories = oldCategories.filter((c) => !categories.includes(c));
+      if (removedCategories.length > 0) {
         const oldServices = await db
           .collection("providerServices")
-          .find({ providerId: reactivateId })
+          .find({ providerId: reactivateId, category: { $in: removedCategories } })
           .toArray();
 
         if (oldServices.length > 0) {
@@ -512,7 +513,7 @@ async function signupProvider(req, res) {
           deleteManyFromCloudinary(allImages);
           await db
             .collection("providerServices")
-            .deleteMany({ providerId: reactivateId });
+            .deleteMany({ providerId: reactivateId, category: { $in: removedCategories } });
         }
       }
 
@@ -527,7 +528,7 @@ async function signupProvider(req, res) {
             address: addressObj,
             cnic,
             gender,
-            category,
+            categories,
             about: typeof about === "string" ? about.trim() : "",
             password: hashedPassword,
             profileImage,
@@ -550,7 +551,7 @@ async function signupProvider(req, res) {
         address: addressObj,
         cnic,
         gender,
-        category,
+        categories,
         about: typeof about === "string" ? about.trim() : "",
         password: hashedPassword,
         role: "provider",
