@@ -35,7 +35,12 @@ async function postService(req, res) {
       return res.status(403).json({ message: "Only providers can post services" });
     }
 
-    if (!user.categories?.includes(category)) {
+    const userCats = user.categories?.length
+      ? user.categories
+      : user.category
+      ? [user.category]
+      : [];
+    if (!userCats.includes(category)) {
       return res.status(400).json({ message: "Selected category is not in your profile" });
     }
 
@@ -83,7 +88,12 @@ async function updateService(req, res) {
     }
 
     const user = await db.collection("users").findOne({ _id: providerId });
-    if (!user?.categories?.includes(category)) {
+    const userCatsU = user?.categories?.length
+      ? user.categories
+      : user?.category
+      ? [user.category]
+      : [];
+    if (!userCatsU.includes(category)) {
       return res.status(400).json({ message: "Selected category is not in your profile" });
     }
 

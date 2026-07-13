@@ -414,15 +414,18 @@ async function updateProfile(req, res) {
       };
     }
 
+    // Categories — allowed for any role so auto-add from post_a_service_screen
+    // works even when the stored token belongs to the consumer twin account.
+    if (Array.isArray(fields.categories) && fields.categories.length > 0) {
+      if (!fields.categories.every((c) => VALID_CATEGORIES.includes(c))) {
+        return res.status(400).json({ message: "One or more invalid categories" });
+      }
+      update.categories = fields.categories;
+    }
+
     // Provider-only fields
     if (user.role === "provider") {
       if (fields.email) update.email = fields.email.toLowerCase().trim();
-      if (Array.isArray(fields.categories) && fields.categories.length > 0) {
-        if (!fields.categories.every((c) => VALID_CATEGORIES.includes(c))) {
-          return res.status(400).json({ message: "One or more invalid categories" });
-        }
-        update.categories = fields.categories;
-      }
       if (typeof fields.about === "string") {
         update.about = fields.about.trim();
       }
