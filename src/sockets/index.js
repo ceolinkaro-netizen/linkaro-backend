@@ -102,23 +102,23 @@ function initSocket(server) {
     // before the transport close races the DISCONNECT packet.
     socket.on("logout", async () => {
       console.log(`[logout] userId=${userId} socketId=${socket.id}`);
-      const set = onlineUsers.get(userId);
-      if (!set) {
+      if (!onlineUsers.has(userId)) {
         console.log(`[logout] userId=${userId} not in onlineUsers, skipping`);
         return;
       }
-      set.delete(socket.id);
-      if (set.size === 0) {
-        onlineUsers.delete(userId);
-        try {
-          await db
-            .collection("users")
-            .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
-        } catch (err) {
-          console.error("[logout] updateOne error:", err.message);
-        }
-        await broadcastPresence(io, db, userId, false);
+      // On explicit logout: remove ALL sockets for this user, not just the
+      // current one. Ghost connections left over from reconnect races (multiple
+      // socket IDs in the set) would otherwise keep set.size > 0 and prevent
+      // broadcastPresence from ever firing. Explicit logout always wins.
+      onlineUsers.delete(userId);
+      try {
+        await db
+          .collection("users")
+          .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
+      } catch (err) {
+        console.error("[logout] updateOne error:", err.message);
       }
+      await broadcastPresence(io, db, userId, false);
     });
 
     // Presence watch — client joins presence:X rooms for users whose online
