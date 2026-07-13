@@ -9,7 +9,7 @@ const {
   subscriptionStatusEmail,
 } = require("../lib/mailer");
 const { createNotification } = require("../lib/notifications");
-const { uploadToCloudinary } = require("../lib/cloudinary");
+const { uploadToCloudinary, deleteManyFromCloudinary } = require("../lib/cloudinary");
 const { geocodeAddress } = require("../lib/geocoding");
 
 const BLOCKED_USER_FIELDS = [
@@ -693,8 +693,22 @@ async function updateUser(req, res) {
 
     update.updatedAt = new Date();
 
+    // Collect old Cloudinary images being replaced so we can delete them after save
+    const imagesToDelete = [];
+    if (update.profileImage && user.profileImage && update.profileImage !== user.profileImage) {
+      imagesToDelete.push(user.profileImage);
+    }
+    if (update.cnicFrontImage && user.cnicFrontImage && update.cnicFrontImage !== user.cnicFrontImage) {
+      imagesToDelete.push(user.cnicFrontImage);
+    }
+    if (update.cnicBackImage && user.cnicBackImage && update.cnicBackImage !== user.cnicBackImage) {
+      imagesToDelete.push(user.cnicBackImage);
+    }
+
     const prevStatus = user.registrationStatus;
     await db.collection("users").updateOne({ _id: new ObjectId(id) }, { $set: update });
+
+    if (imagesToDelete.length > 0) deleteManyFromCloudinary(imagesToDelete);
 
     // Tell the provider's own connected socket(s) to rejoin under the new
     // category — room membership doesn't update itself just because the
