@@ -12,26 +12,34 @@ function isUserOnline(userId) {
 }
 
 async function broadcastPresence(io, db, userId, isOnline) {
-  const conversations = await db
-    .collection("conversations")
-    .find({ participants: new ObjectId(userId) })
-    .project({ participants: 1 })
-    .toArray();
+  console.log(`[broadcastPresence] userId=${userId} isOnline=${isOnline}`);
 
-  const otherIds = new Set();
-  conversations.forEach((c) => {
-    c.participants.forEach((p) => {
-      if (p.toString() !== userId) otherIds.add(p.toString());
+  // Fan-out to conversation partners in user:X rooms.
+  // Wrapped in try-catch so a DB error never prevents the presence:X emission below.
+  try {
+    const conversations = await db
+      .collection("conversations")
+      .find({ participants: new ObjectId(userId) })
+      .project({ participants: 1 })
+      .toArray();
+
+    const otherIds = new Set();
+    conversations.forEach((c) => {
+      c.participants.forEach((p) => {
+        if (p.toString() !== userId) otherIds.add(p.toString());
+      });
     });
-  });
 
-  otherIds.forEach((id) => {
-    io.to(`user:${id}`).emit("presence", { userId, isOnline });
-  });
+    otherIds.forEach((id) => {
+      io.to(`user:${id}`).emit("presence", { userId, isOnline });
+    });
+  } catch (err) {
+    console.error("[broadcastPresence] conversation query error:", err.message);
+  }
 
-  // Also notify any socket that has subscribed to this user's presence via
-  // watch_presence (e.g. consumer home screen showing providers they haven't
-  // chatted with — those users are not in the conversations list above).
+  // ALWAYS emit to presence:X regardless of whether the conversation query
+  // succeeded — consumer home screen watchers rely solely on this room.
+  console.log(`[broadcastPresence] emitting to presence:${userId}`);
   io.to(`presence:${userId}`).emit("presence", { userId, isOnline });
 }
 
@@ -93,14 +101,22 @@ function initSocket(server) {
     // server marks the user offline and broadcasts presence immediately,
     // before the transport close races the DISCONNECT packet.
     socket.on("logout", async () => {
+      console.log(`[logout] userId=${userId} socketId=${socket.id}`);
       const set = onlineUsers.get(userId);
-      if (!set) return;
+      if (!set) {
+        console.log(`[logout] userId=${userId} not in onlineUsers, skipping`);
+        return;
+      }
       set.delete(socket.id);
       if (set.size === 0) {
         onlineUsers.delete(userId);
-        await db
-          .collection("users")
-          .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
+        try {
+          await db
+            .collection("users")
+            .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
+        } catch (err) {
+          console.error("[logout] updateOne error:", err.message);
+        }
         await broadcastPresence(io, db, userId, false);
       }
     });
@@ -110,9 +126,9 @@ function initSocket(server) {
     // that the consumer hasn't necessarily chatted with).
     socket.on("watch_presence", ({ userIds } = {}) => {
       if (!Array.isArray(userIds)) return;
-      userIds
-        .filter((id) => typeof id === "string" && ObjectId.isValid(id))
-        .forEach((id) => socket.join(`presence:${id}`));
+      const valid = userIds.filter((id) => typeof id === "string" && ObjectId.isValid(id));
+      console.log(`[watch_presence] socketId=${socket.id} userId=${userId} watching=${JSON.stringify(valid)}`);
+      valid.forEach((id) => socket.join(`presence:${id}`));
     });
 
     socket.on("unwatch_presence", ({ userIds } = {}) => {
@@ -200,14 +216,22 @@ function initSocket(server) {
     });
 
     socket.on("disconnect", async () => {
+      console.log(`[disconnect] userId=${userId} socketId=${socket.id}`);
       const set = onlineUsers.get(userId);
-      if (!set) return;
+      if (!set) {
+        console.log(`[disconnect] userId=${userId} not in onlineUsers, skipping`);
+        return;
+      }
       set.delete(socket.id);
       if (set.size === 0) {
         onlineUsers.delete(userId);
-        await db
-          .collection("users")
-          .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
+        try {
+          await db
+            .collection("users")
+            .updateOne({ _id: new ObjectId(userId) }, { $set: { lastSeenAt: new Date() } });
+        } catch (err) {
+          console.error("[disconnect] updateOne error:", err.message);
+        }
         await broadcastPresence(io, db, userId, false);
       }
     });
