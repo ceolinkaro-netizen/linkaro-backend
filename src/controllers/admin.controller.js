@@ -958,20 +958,6 @@ async function getUserDeviceStats(req, res) {
   }
 }
 
-async function backfillPlatform(req, res) {
-  try {
-    const db = await getDb();
-    const result = await db.collection("users").updateMany(
-      { role: { $in: ["consumer", "provider"] }, lastLoginPlatform: { $exists: false } },
-      { $set: { lastLoginPlatform: "android" } },
-    );
-    return res.status(200).json({ success: true, updated: result.modifiedCount });
-  } catch (error) {
-    console.error("Backfill platform error:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-}
-
 module.exports = {
   checkExpiredJobs,
   checkExpiredSubscriptions,
@@ -994,5 +980,4 @@ module.exports = {
   updateUser,
   uploadImage,
   getUserDeviceStats,
-  backfillPlatform,
 };
