@@ -20,6 +20,8 @@ const {
   updateTicket,
   updateUser,
   uploadImage,
+  getUserDeviceStats,
+  backfillPlatform,
 } = require("../controllers/admin.controller");
 
 const router = express.Router();
@@ -47,5 +49,7 @@ router.post("/update-subscription-status", updateSubscriptionStatus);
 router.post("/update-ticket", updateTicket);
 router.post("/update-user", updateUser);
 router.post("/upload-image", uploadImage);
+router.get("/get-device-stats", getUserDeviceStats);
+router.post("/backfill-platform", backfillPlatform);
 
 module.exports = router;

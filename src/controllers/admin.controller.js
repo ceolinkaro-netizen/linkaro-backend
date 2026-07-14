@@ -942,6 +942,36 @@ async function checkExpiredJobs(req, res) {
   }
 }
 
+async function getUserDeviceStats(req, res) {
+  try {
+    const db = await getDb();
+    const roles = { role: { $in: ["consumer", "provider"] } };
+    const [android, ios, web] = await Promise.all([
+      db.collection("users").countDocuments({ ...roles, lastLoginPlatform: "android" }),
+      db.collection("users").countDocuments({ ...roles, lastLoginPlatform: "ios" }),
+      db.collection("users").countDocuments({ ...roles, lastLoginPlatform: "web" }),
+    ]);
+    return res.status(200).json({ success: true, android, ios, web });
+  } catch (error) {
+    console.error("Get device stats error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function backfillPlatform(req, res) {
+  try {
+    const db = await getDb();
+    const result = await db.collection("users").updateMany(
+      { role: { $in: ["consumer", "provider"] }, lastLoginPlatform: { $exists: false } },
+      { $set: { lastLoginPlatform: "android" } },
+    );
+    return res.status(200).json({ success: true, updated: result.modifiedCount });
+  } catch (error) {
+    console.error("Backfill platform error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   checkExpiredJobs,
   checkExpiredSubscriptions,
@@ -963,4 +993,6 @@ module.exports = {
   updateTicket,
   updateUser,
   uploadImage,
+  getUserDeviceStats,
+  backfillPlatform,
 };

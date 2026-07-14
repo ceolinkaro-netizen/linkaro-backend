@@ -66,7 +66,7 @@ async function checkAvailability(req, res) {
 }
 
 async function login(req, res) {
-  const { email, password, role } = req.body;
+  const { email, password, role, platform } = req.body;
 
   if (!email || !password || !role) {
     return res
@@ -123,6 +123,14 @@ async function login(req, res) {
       { expiresIn: "30d" },
     );
 
+    const validPlatforms = ["android", "ios", "web"];
+    if (platform && validPlatforms.includes(platform)) {
+      db.collection("users").updateOne(
+        { _id: user._id },
+        { $set: { lastLoginPlatform: platform, lastLoginAt: new Date() } },
+      ).catch(() => {});
+    }
+
     return res.status(200).json({
       success: true,
       token,
@@ -141,7 +149,7 @@ async function login(req, res) {
 }
 
 async function providerLogin(req, res) {
-  const { email, name, profileImage, provider, providerId, role } = req.body;
+  const { email, name, profileImage, provider, providerId, role, platform } = req.body;
 
   if (!email || !provider || !providerId) {
     return res
@@ -178,6 +186,14 @@ async function providerLogin(req, res) {
       env.secretKey,
       { expiresIn: "7d" },
     );
+
+    const validPlatforms = ["android", "ios", "web"];
+    if (platform && validPlatforms.includes(platform)) {
+      db.collection("users").updateOne(
+        { _id: user._id },
+        { $set: { lastLoginPlatform: platform, lastLoginAt: new Date() } },
+      ).catch(() => {});
+    }
 
     return res.status(200).json({
       success: true,
