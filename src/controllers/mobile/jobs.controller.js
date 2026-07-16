@@ -506,15 +506,17 @@ async function nearbyJobs(req, res) {
   try {
     const db = await getDb();
 
-    const provider = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(req.decoded.id) });
+    const [provider, settings] = await Promise.all([
+      db.collection("users").findOne({ _id: new ObjectId(req.decoded.id) }),
+      db.collection("settings").findOne({ key: "subscriptionRequired" }),
+    ]);
 
     if (!provider) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (provider.subscriptionStatus !== "active") {
+    const subscriptionRequired = settings?.value !== false;
+    if (subscriptionRequired && provider.subscriptionStatus !== "active") {
       return res.status(200).json({
         success: true,
         needsSubscription: true,

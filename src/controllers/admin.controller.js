@@ -4,12 +4,13 @@ const { getDb } = require("../config/db");
 const env = require("../config/env");
 const {
   sendEmail,
+  otpEmail,
   registrationVerifiedEmail,
   registrationUnverifiedEmail,
   subscriptionStatusEmail,
 } = require("../lib/mailer");
 const { createNotification } = require("../lib/notifications");
-const { uploadToCloudinary, deleteManyFromCloudinary } = require("../lib/cloudinary");
+const { uploadToCloudinary, deleteManyFromCloudinary, deleteFromCloudinary } = require("../lib/cloudinary");
 const { geocodeAddress } = require("../lib/geocoding");
 
 const BLOCKED_USER_FIELDS = [
@@ -958,6 +959,119 @@ async function getUserDeviceStats(req, res) {
   }
 }
 
+async function updateProfile(req, res) {
+  const { name, email, password, profileImage } = req.body;
+
+  try {
+    const db = await getDb();
+    const userId = new ObjectId(req.user.id);
+    const user = await db.collection("users").findOne({ _id: userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const update = {};
+
+    if (name && name.trim()) update.name = name.trim();
+
+    if (email) {
+      const normalizedEmail = email.toLowerCase().trim();
+      if (normalizedEmail !== user.email) {
+        const conflict = await db.collection("users").findOne({ email: normalizedEmail, _id: { $ne: userId } });
+        if (conflict) return res.status(409).json({ message: "Email is already in use" });
+        update.email = normalizedEmail;
+      }
+    }
+
+    if (password) {
+      if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      update.password = await bcrypt.hash(password, 10);
+    }
+
+    if (profileImage) {
+      const url = await uploadToCloudinary(profileImage, "profiles");
+      if (user.profileImage) deleteFromCloudinary(user.profileImage).catch(() => {});
+      update.profileImage = url;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    await db.collection("users").updateOne({ _id: userId }, { $set: update });
+
+    const updated = await db.collection("users").findOne(
+      { _id: userId },
+      { projection: { name: 1, email: 1, profileImage: 1 } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      name: updated.name || null,
+      email: updated.email,
+      profileImage: updated.profileImage || null,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function sendProfileOtp(req, res) {
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne(
+      { _id: new ObjectId(req.user.id) },
+      { projection: { email: 1 } }
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+    await sendEmail({
+      to: user.email,
+      subject: "Your Linkaro verification code",
+      html: otpEmail(otp),
+      text: `Your Linkaro verification code is: ${otp}. It expires in 10 minutes.`,
+    });
+
+    return res.status(200).json({ success: true, otp });
+  } catch (error) {
+    console.error("Send profile OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function getSettings(req, res) {
+  try {
+    const db = await getDb();
+    const settings = await db.collection("settings").findOne({ key: "subscriptionRequired" });
+    const subscriptionRequired = settings?.value !== false;
+    return res.status(200).json({ success: true, subscriptionRequired });
+  } catch (error) {
+    console.error("Get settings error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function toggleSubscriptionRequired(req, res) {
+  try {
+    const db = await getDb();
+    const settings = await db.collection("settings").findOne({ key: "subscriptionRequired" });
+    const current = settings?.value !== false;
+    const newValue = !current;
+    await db.collection("settings").updateOne(
+      { key: "subscriptionRequired" },
+      { $set: { value: newValue } },
+      { upsert: true }
+    );
+    const io = req.app.get("io");
+    if (io) io.emit("subscription_required_updated", { subscriptionRequired: newValue });
+    return res.status(200).json({ success: true, subscriptionRequired: newValue });
+  } catch (error) {
+    console.error("Toggle subscription required error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   checkExpiredJobs,
   checkExpiredSubscriptions,
@@ -968,16 +1082,20 @@ module.exports = {
   getJobs,
   getManagers,
   getProviders,
+  getSettings,
   getSubscription,
   getSubscriptions,
   getTickets,
   getUser,
   getUsers,
   sendNotification,
+  sendProfileOtp,
+  toggleSubscriptionRequired,
   updateManager,
   updateSubscriptionStatus,
   updateTicket,
   updateUser,
   uploadImage,
+  updateProfile,
   getUserDeviceStats,
 };

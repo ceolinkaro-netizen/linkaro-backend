@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const { ObjectId } = require("mongodb");
 const { getDb } = require("../config/db");
 const env = require("../config/env");
 const { sendEmail, otpEmail } = require("../lib/mailer");
@@ -127,13 +128,25 @@ function logout(req, res) {
   return res.status(200).json({ success: true });
 }
 
-function me(req, res) {
-  return res.status(200).json({
-    success: true,
-    role: req.user.role,
-    email: req.user.email,
-    name: req.user.name || null,
-  });
+async function me(req, res) {
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne(
+      { _id: new ObjectId(req.user.id) },
+      { projection: { name: 1, email: 1, role: 1, profileImage: 1 } }
+    );
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    return res.status(200).json({
+      success: true,
+      role: user.role,
+      email: user.email,
+      name: user.name || null,
+      profileImage: user.profileImage || null,
+    });
+  } catch (error) {
+    console.error("Me error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
 }
 
 module.exports = { login, sendOtp, logout, me };

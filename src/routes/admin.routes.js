@@ -9,13 +9,17 @@ const {
   getJobs,
   getManagers,
   getProviders,
+  getSettings,
   getSubscription,
   getSubscriptions,
   getTickets,
   getUser,
   getUsers,
   sendNotification,
+  sendProfileOtp,
+  toggleSubscriptionRequired,
   updateManager,
+  updateProfile,
   updateSubscriptionStatus,
   updateTicket,
   updateUser,
@@ -47,7 +51,11 @@ router.post("/update-manager", updateManager);
 router.post("/update-subscription-status", updateSubscriptionStatus);
 router.post("/update-ticket", updateTicket);
 router.post("/update-user", updateUser);
+router.post("/send-profile-otp", sendProfileOtp);
+router.post("/update-profile", updateProfile);
 router.post("/upload-image", uploadImage);
 router.get("/get-device-stats", getUserDeviceStats);
+router.get("/get-settings", getSettings);
+router.post("/toggle-subscription-required", toggleSubscriptionRequired);
 
 module.exports = router;

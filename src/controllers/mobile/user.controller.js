@@ -19,18 +19,20 @@ async function me(req, res) {
   try {
     const db = await getDb();
 
-    const user = await db
-      .collection("users")
-      .findOne(
+    const [user, settings] = await Promise.all([
+      db.collection("users").findOne(
         { _id: new ObjectId(req.decoded.id) },
         { projection: { password: 0 } }
-      );
+      ),
+      db.collection("settings").findOne({ key: "subscriptionRequired" }),
+    ]);
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    return res.status(200).json({ success: true, user });
+    const subscriptionRequired = settings?.value !== false;
+    return res.status(200).json({ success: true, user: { ...user, subscriptionRequired } });
   } catch (error) {
     console.error("Get user error:", error);
     return res.status(500).json({ message: "Internal server error" });
