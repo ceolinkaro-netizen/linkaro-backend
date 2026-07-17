@@ -477,6 +477,13 @@ async function signupProvider(req, res) {
     if (existing) {
       if (existing.isActive === false) {
         reactivateId = existing._id;
+        // CNIC is locked to the original — cannot be changed on re-signup.
+        // Prevents bad actors from hiding their identity after deactivation.
+        if (existing.cnic && existing.cnic !== cnic) {
+          return res.status(409).json({
+            message: "Your National ID number cannot be changed. Please contact support if you need to update your identity documents.",
+          });
+        }
       } else {
         return res.status(409).json({ message: "Email is already registered" });
       }
