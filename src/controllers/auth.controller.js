@@ -149,4 +149,51 @@ async function me(req, res) {
   }
 }
 
-module.exports = { login, sendOtp, logout, me };
+async function forgotSendOtp(req, res) {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: "Email is required" });
+
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ message: "No account found with this email" });
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    await sendEmail({
+      to: user.email,
+      subject: "Reset your Linkaro password",
+      html: otpEmail(otp),
+      text: `Your Linkaro password reset code is: ${otp}. It expires in 10 minutes.`,
+    });
+
+    return res.status(200).json({ success: true, otp });
+  } catch (error) {
+    console.error("Forgot send OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function forgotResetPassword(req, res) {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
+  if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const hashed = await bcrypt.hash(password, 10);
+    await db.collection("users").updateOne(
+      { email: email.toLowerCase().trim() },
+      { $set: { password: hashed } }
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Forgot reset error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+module.exports = { login, sendOtp, logout, me, forgotSendOtp, forgotResetPassword };
