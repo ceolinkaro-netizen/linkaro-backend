@@ -818,9 +818,9 @@ async function createManager(req, res) {
     const db = await getDb();
     const normalizedEmail = email.toLowerCase().trim();
 
-    const existing = await db.collection("users").findOne({ email: normalizedEmail, role });
+    const existing = await db.collection("users").findOne({ email: normalizedEmail });
     if (existing) {
-      return res.status(409).json({ message: `This email is already registered as ${role}` });
+      return res.status(409).json({ message: "This email is already registered" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -870,12 +870,12 @@ async function updateManager(req, res) {
     const emailChanged = effectiveEmail !== manager.email;
     const roleChanged = role && role !== manager.role;
 
-    if (emailChanged || roleChanged) {
+    if (emailChanged) {
       const existing = await db
         .collection("users")
-        .findOne({ email: effectiveEmail, role: effectiveRole, _id: { $ne: manager._id } });
+        .findOne({ email: effectiveEmail, _id: { $ne: manager._id } });
       if (existing) {
-        return res.status(409).json({ message: `This email is already registered as ${effectiveRole}` });
+        return res.status(409).json({ message: "This email is already registered" });
       }
     }
 

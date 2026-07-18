@@ -12,14 +12,10 @@ const ROLE_ROUTES = {
 };
 
 async function login(req, res) {
-  const { email, password, category } = req.body;
+  const { email, password } = req.body;
 
-  if (!email || !password || !category) {
-    return res.status(400).json({ message: "Email, password and category are required" });
-  }
-
-  if (!ROLE_ROUTES[category]) {
-    return res.status(400).json({ message: "Invalid category selected" });
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password are required" });
   }
 
   try {
@@ -38,10 +34,6 @@ async function login(req, res) {
 
     if (!passwordMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    if (user.role !== category) {
-      return res.status(403).json({ message: "You don't have access to this role" });
     }
 
     const token = jwt.sign(
@@ -71,14 +63,10 @@ async function login(req, res) {
 }
 
 async function sendOtp(req, res) {
-  const { email, password, category } = req.body;
+  const { email, password } = req.body;
 
-  if (!email || !password || !category) {
-    return res.status(400).json({ message: "Email, password and category are required" });
-  }
-
-  if (!ROLE_ROUTES[category]) {
-    return res.status(400).json({ message: "Invalid category selected" });
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password are required" });
   }
 
   try {
@@ -96,10 +84,6 @@ async function sendOtp(req, res) {
 
     if (!passwordMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    if (user.role !== category) {
-      return res.status(403).json({ message: "You don't have access to this role" });
     }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
