@@ -808,6 +808,7 @@ async function verifyGooglePlayPurchase(req, res) {
     }
 
     const now = new Date();
+    const existingUser = await db.collection("users").findOne({ _id: new ObjectId(userId) });
     await Promise.all([
       db.collection("users").updateOne({ _id: new ObjectId(userId) }, { $set: updateFields }),
       db.collection("subscriptions").insertOne({
@@ -822,8 +823,11 @@ async function verifyGooglePlayPurchase(req, res) {
     ]);
 
     const io = req.app.get("io");
-    if (io && productId === "linkaro_pro_monthly") {
-      io.to(`user:${userId}`).emit("subscription_updated", { subscriptionStatus: "active" });
+    if (io) {
+      io.to(`user:${userId}`).emit("subscription_updated", {
+        subscriptionStatus: productId === "linkaro_pro_monthly" ? "active" : (existingUser?.subscriptionStatus ?? "inactive"),
+        badgeSubscriptionStatus: productId === "linkaro_verified_monthly" ? "active" : (existingUser?.badgeSubscriptionStatus ?? "inactive"),
+      });
     }
 
     return res.status(200).json({ success: true, message: "Subscription activated", expiryDate });

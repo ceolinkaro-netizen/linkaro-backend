@@ -26,6 +26,7 @@ async function getAndroidPublisher() {
 
 async function googlePlayWebhook(req, res) {
   // Acknowledge immediately — Pub/Sub retries if it doesn't get 200 quickly
+  const io = req.app.get("io");
   res.status(200).json({ received: true });
   console.log("[Webhook] Google Play notification received");
 
@@ -47,6 +48,8 @@ async function googlePlayWebhook(req, res) {
     const db = await getDb();
     const user = await db.collection("users").findOne({ [tokenField]: purchaseToken });
     if (!user) return;
+
+    const userId = user._id.toString();
 
     if (notificationType === NOTIFICATION_TYPE.RENEWED) {
       const androidPublisher = await getAndroidPublisher();
@@ -72,6 +75,13 @@ async function googlePlayWebhook(req, res) {
           purchaseToken,
         }),
       ]);
+
+      if (io) {
+        io.to(`user:${userId}`).emit("subscription_updated", {
+          subscriptionStatus: isPro ? "active" : (user.subscriptionStatus ?? "inactive"),
+          badgeSubscriptionStatus: isPro ? (user.badgeSubscriptionStatus ?? "inactive") : "active",
+        });
+      }
     } else if (
       notificationType === NOTIFICATION_TYPE.REVOKED ||
       notificationType === NOTIFICATION_TYPE.EXPIRED
@@ -80,6 +90,13 @@ async function googlePlayWebhook(req, res) {
         { _id: user._id },
         { $set: { [statusField]: "inactive", updatedAt: new Date() } }
       );
+
+      if (io) {
+        io.to(`user:${userId}`).emit("subscription_updated", {
+          subscriptionStatus: isPro ? "inactive" : (user.subscriptionStatus ?? "inactive"),
+          badgeSubscriptionStatus: isPro ? (user.badgeSubscriptionStatus ?? "inactive") : "inactive",
+        });
+      }
     }
     // CANCELED (3): user still has access until period ends — no action needed
     // PURCHASED (4): handled by verify endpoint — no action needed
