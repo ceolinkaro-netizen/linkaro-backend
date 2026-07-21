@@ -307,15 +307,23 @@ async function subscription(req, res) {
     // Otherwise the cron that auto-expires subscriptions could flip a still-
     // pending submission to "inactive" before anyone reviewed it.
     const subscriptionDate = new Date();
+    const isBadge = subscriptionType.toLowerCase().includes("badge");
+    const statusField = isBadge ? "badgeSubscriptionStatus" : "subscriptionStatus";
 
-    await db.collection("subscriptions").insertOne({
-      userId: new ObjectId(req.decoded.id),
-      subscriptionType,
-      paymentOption,
-      amountPaid,
-      subscriptionDate,
-      receiptImage,
-    });
+    await Promise.all([
+      db.collection("subscriptions").insertOne({
+        userId: new ObjectId(req.decoded.id),
+        subscriptionType,
+        paymentOption,
+        amountPaid,
+        subscriptionDate,
+        receiptImage,
+      }),
+      db.collection("users").updateOne(
+        { _id: new ObjectId(req.decoded.id) },
+        { $set: { [statusField]: "pending", updatedAt: new Date() } }
+      ),
+    ]);
 
     return res.status(201).json({
       success: true,
@@ -340,6 +348,10 @@ async function updateBadgeSubscription(req, res) {
 
   if (badgeSubscriptionStatus === undefined || badgeSubscriptionStatus === null) {
     return res.status(400).json({ message: "badgeSubscriptionStatus is required" });
+  }
+
+  if (badgeSubscriptionStatus !== "pending") {
+    return res.status(400).json({ message: "Invalid badgeSubscriptionStatus value" });
   }
 
   try {
@@ -521,6 +533,10 @@ async function updateSubscription(req, res) {
 
   if (subscriptionStatus === undefined || subscriptionStatus === null) {
     return res.status(400).json({ message: "subscriptionStatus is required" });
+  }
+
+  if (subscriptionStatus !== "pending") {
+    return res.status(400).json({ message: "Invalid subscriptionStatus value" });
   }
 
   try {

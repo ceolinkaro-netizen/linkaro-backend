@@ -51,12 +51,22 @@ async function googlePlayWebhook(req, res) {
 
     const userId = user._id.toString();
 
-    if (notificationType === NOTIFICATION_TYPE.RENEWED) {
+    if (notificationType === NOTIFICATION_TYPE.RENEWED || notificationType === NOTIFICATION_TYPE.PURCHASED) {
+      // For PURCHASED: only activate if not already active (fallback for when
+      // verifyGooglePlayPurchase completed on our end but Flutter never got the 200)
+      if (notificationType === NOTIFICATION_TYPE.PURCHASED && user[statusField] === "active") {
+        return;
+      }
+
       const androidPublisher = await getAndroidPublisher();
       const result = await androidPublisher.purchases.subscriptionsv2.get({
         packageName: PACKAGE_NAME,
         token: purchaseToken,
       });
+
+      const validStates = ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"];
+      if (!validStates.includes(result.data.subscriptionState)) return;
+
       const lineItem = result.data.lineItems?.find((item) => item.productId === subscriptionId);
       const expiryDate = lineItem?.expiryTime ? new Date(lineItem.expiryTime) : null;
 
@@ -99,7 +109,6 @@ async function googlePlayWebhook(req, res) {
       }
     }
     // CANCELED (3): user still has access until period ends — no action needed
-    // PURCHASED (4): handled by verify endpoint — no action needed
   } catch (error) {
     console.error("Google Play webhook error:", error);
   }
