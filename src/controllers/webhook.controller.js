@@ -27,6 +27,7 @@ async function getAndroidPublisher() {
 async function googlePlayWebhook(req, res) {
   // Acknowledge immediately — Pub/Sub retries if it doesn't get 200 quickly
   res.status(200).json({ received: true });
+  console.log("[Webhook] Google Play notification received");
 
   try {
     const message = req.body?.message;
