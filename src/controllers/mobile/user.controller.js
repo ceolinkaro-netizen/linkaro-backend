@@ -791,6 +791,9 @@ async function verifyGooglePlayPurchase(req, res) {
     const db = await getDb();
     const userId = req.decoded.id;
 
+    const subscriptionType = productId === "linkaro_pro_monthly" ? "Basic Pro Plan" : "Verified Badge";
+    const amountPaid = productId === "linkaro_pro_monthly" ? "Rs. 1499 / Month" : "Rs. 999 / Month";
+
     let updateFields = { updatedAt: new Date() };
     if (productId === "linkaro_pro_monthly") {
       updateFields.subscriptionStatus = "active";
@@ -804,7 +807,19 @@ async function verifyGooglePlayPurchase(req, res) {
       return res.status(400).json({ success: false, message: "Unknown product ID" });
     }
 
-    await db.collection("users").updateOne({ _id: new ObjectId(userId) }, { $set: updateFields });
+    const now = new Date();
+    await Promise.all([
+      db.collection("users").updateOne({ _id: new ObjectId(userId) }, { $set: updateFields }),
+      db.collection("subscriptions").insertOne({
+        userId: new ObjectId(userId),
+        subscriptionType,
+        paymentOption: "Google Play",
+        amountPaid,
+        subscriptionDate: now,
+        subscriptionEndDate: expiryDate,
+        purchaseToken,
+      }),
+    ]);
 
     const io = req.app.get("io");
     if (io && productId === "linkaro_pro_monthly") {
