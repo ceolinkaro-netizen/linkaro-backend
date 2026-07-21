@@ -16,6 +16,7 @@ const {
   updateFcmToken,
   updatePushPreference,
   updateLocation,
+  verifyGooglePlayPurchase,
 } = require("../../controllers/mobile/user.controller");
 
 const router = express.Router();
@@ -36,5 +37,6 @@ router.post("/deactivate", verifyMobileToken, deactivateAccount);
 router.post("/fcm-token", verifyMobileToken, updateFcmToken);
 router.post("/push-preference", verifyMobileToken, updatePushPreference);
 router.post("/update-location", verifyMobileToken, updateLocation);
+router.post("/verify-google-play-purchase", verifyMobileToken, verifyGooglePlayPurchase);
 
 module.exports = router;

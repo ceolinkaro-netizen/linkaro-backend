@@ -6,6 +6,22 @@ const env = require("../../config/env");
 const { VALID_CATEGORIES } = require("../../constants/categories");
 const { isUserOnline } = require("../../sockets");
 const { deleteManyFromCloudinary } = require("../../lib/cloudinary");
+const { google } = require("googleapis");
+const path = require("path");
+
+const PACKAGE_NAME = "com.linkaro.app";
+
+async function getAndroidPublisher() {
+  const credentials = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT
+    ? JSON.parse(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT)
+    : require(path.join(__dirname, "../../../esoteric-state-495621-q2-c54b98ce87e4.json"));
+
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+  });
+  return google.androidpublisher({ version: "v3", auth });
+}
 
 function withOnlineStatus(user) {
   const { lastSeenAt, ...rest } = user;
@@ -744,6 +760,64 @@ async function updateLocation(req, res) {
   }
 }
 
+async function verifyGooglePlayPurchase(req, res) {
+  const { purchaseToken, productId } = req.body;
+
+  if (!purchaseToken || !productId) {
+    return res.status(400).json({ message: "purchaseToken and productId are required" });
+  }
+
+  try {
+    const androidPublisher = await getAndroidPublisher();
+
+    const result = await androidPublisher.purchases.subscriptionsv2.get({
+      packageName: PACKAGE_NAME,
+      token: purchaseToken,
+    });
+
+    const sub = result.data;
+
+    if (sub.subscriptionState !== "SUBSCRIPTION_STATE_ACTIVE" && sub.subscriptionState !== "SUBSCRIPTION_STATE_IN_GRACE_PERIOD") {
+      return res.status(400).json({ success: false, message: "Subscription is not active" });
+    }
+
+    const lineItem = sub.lineItems?.find((item) => item.productId === productId);
+    if (!lineItem) {
+      return res.status(400).json({ success: false, message: "Product not found in purchase" });
+    }
+
+    const expiryDate = lineItem.expiryTime ? new Date(lineItem.expiryTime) : null;
+
+    const db = await getDb();
+    const userId = req.decoded.id;
+
+    let updateFields = { updatedAt: new Date() };
+    if (productId === "linkaro_pro_monthly") {
+      updateFields.subscriptionStatus = "active";
+      updateFields.subscriptionExpiry = expiryDate;
+      updateFields.subscriptionPurchaseToken = purchaseToken;
+    } else if (productId === "linkaro_verified_monthly") {
+      updateFields.badgeSubscriptionStatus = "active";
+      updateFields.badgeSubscriptionExpiry = expiryDate;
+      updateFields.badgeSubscriptionPurchaseToken = purchaseToken;
+    } else {
+      return res.status(400).json({ success: false, message: "Unknown product ID" });
+    }
+
+    await db.collection("users").updateOne({ _id: new ObjectId(userId) }, { $set: updateFields });
+
+    const io = req.app.get("io");
+    if (io && productId === "linkaro_pro_monthly") {
+      io.to(`user:${userId}`).emit("subscription_updated", { subscriptionStatus: "active" });
+    }
+
+    return res.status(200).json({ success: true, message: "Subscription activated", expiryDate });
+  } catch (error) {
+    console.error("Google Play purchase verification error:", error);
+    return res.status(500).json({ success: false, message: "Failed to verify purchase" });
+  }
+}
+
 module.exports = {
   me,
   listProviders,
@@ -760,4 +834,5 @@ module.exports = {
   updateFcmToken,
   updatePushPreference,
   updateLocation,
+  verifyGooglePlayPurchase,
 };
