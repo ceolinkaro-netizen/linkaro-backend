@@ -862,7 +862,7 @@ async function blockUser(req, res) {
     return res.status(400).json({ message: "You cannot block yourself" });
   }
   try {
-    const db = getDb();
+    const db = await getDb();
     await db.collection("users").updateOne(
       { _id: new ObjectId(req.decoded.id) },
       { $addToSet: { blockedUsers: new ObjectId(targetUserId) } }
@@ -880,7 +880,7 @@ async function unblockUser(req, res) {
     return res.status(400).json({ message: "Valid targetUserId is required" });
   }
   try {
-    const db = getDb();
+    const db = await getDb();
     await db.collection("users").updateOne(
       { _id: new ObjectId(req.decoded.id) },
       { $pull: { blockedUsers: new ObjectId(targetUserId) } }
@@ -911,7 +911,7 @@ async function reportUser(req, res) {
   }
 
   try {
-    const db = getDb();
+    const db = await getDb();
     await db.collection("reports").insertOne({
       reportedUserId: new ObjectId(reportedUserId),
       reportedBy: new ObjectId(req.decoded.id),
