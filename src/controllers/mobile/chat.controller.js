@@ -263,6 +263,17 @@ async function sendMessage(req, res) {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const otherId = conversation.participants
+      .find((p) => p.toString() !== myId)
+      .toString();
+
+    const recipient = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(otherId) }, { projection: { blockedUsers: 1 } });
+    if (recipient?.blockedUsers?.some((id) => id.toString() === myId)) {
+      return res.status(403).json({ message: "You cannot send messages to this user" });
+    }
+
     const now = new Date();
 
     const messageDoc = {
@@ -279,10 +290,6 @@ async function sendMessage(req, res) {
     };
 
     const result = await db.collection("messages").insertOne(messageDoc);
-
-    const otherId = conversation.participants
-      .find((p) => p.toString() !== myId)
-      .toString();
 
     let previewText = text ?? null;
     if (type === "image") previewText = "Photo";

@@ -18,6 +18,8 @@ const {
   updateLocation,
   verifyGooglePlayPurchase,
   reportUser,
+  blockUser,
+  unblockUser,
 } = require("../../controllers/mobile/user.controller");
 
 const router = express.Router();
@@ -40,5 +42,7 @@ router.post("/push-preference", verifyMobileToken, updatePushPreference);
 router.post("/update-location", verifyMobileToken, updateLocation);
 router.post("/verify-google-play-purchase", verifyMobileToken, verifyGooglePlayPurchase);
 router.post("/report", verifyMobileToken, reportUser);
+router.post("/block", verifyMobileToken, blockUser);
+router.post("/unblock", verifyMobileToken, unblockUser);
 
 module.exports = router;

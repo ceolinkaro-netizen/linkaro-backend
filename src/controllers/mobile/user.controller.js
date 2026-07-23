@@ -853,6 +853,45 @@ async function verifyGooglePlayPurchase(req, res) {
   }
 }
 
+async function blockUser(req, res) {
+  const { targetUserId } = req.body;
+  if (!targetUserId || !ObjectId.isValid(targetUserId)) {
+    return res.status(400).json({ message: "Valid targetUserId is required" });
+  }
+  if (targetUserId === req.decoded.id) {
+    return res.status(400).json({ message: "You cannot block yourself" });
+  }
+  try {
+    const db = getDb();
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(req.decoded.id) },
+      { $addToSet: { blockedUsers: new ObjectId(targetUserId) } }
+    );
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("blockUser error:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function unblockUser(req, res) {
+  const { targetUserId } = req.body;
+  if (!targetUserId || !ObjectId.isValid(targetUserId)) {
+    return res.status(400).json({ message: "Valid targetUserId is required" });
+  }
+  try {
+    const db = getDb();
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(req.decoded.id) },
+      { $pull: { blockedUsers: new ObjectId(targetUserId) } }
+    );
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("unblockUser error:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 async function reportUser(req, res) {
   const { reportedUserId, conversationId, reason } = req.body;
 
@@ -906,4 +945,6 @@ module.exports = {
   updateLocation,
   verifyGooglePlayPurchase,
   reportUser,
+  blockUser,
+  unblockUser,
 };
