@@ -853,6 +853,41 @@ async function verifyGooglePlayPurchase(req, res) {
   }
 }
 
+async function reportUser(req, res) {
+  const { reportedUserId, conversationId, reason } = req.body;
+
+  const validReasons = [
+    "Inappropriate content",
+    "Harassment",
+    "Spam",
+    "Offensive language",
+    "Other",
+  ];
+
+  if (!reportedUserId) {
+    return res.status(400).json({ message: "reportedUserId is required" });
+  }
+  if (!reason || !validReasons.includes(reason)) {
+    return res.status(400).json({ message: "Invalid reason" });
+  }
+
+  try {
+    const db = getDb();
+    await db.collection("reports").insertOne({
+      reportedUserId: new ObjectId(reportedUserId),
+      reportedBy: new ObjectId(req.decoded.id),
+      conversationId: conversationId || null,
+      reason,
+      status: "pending",
+      createdAt: new Date(),
+    });
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("reportUser error:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   me,
   listProviders,
@@ -870,4 +905,5 @@ module.exports = {
   updatePushPreference,
   updateLocation,
   verifyGooglePlayPurchase,
+  reportUser,
 };
