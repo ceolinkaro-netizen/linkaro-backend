@@ -165,12 +165,22 @@ async function assignProvider(req, res) {
         .json({ message: "Job is not open for assignment" });
     }
 
-    const provider = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(providerId), role: "provider" });
+    const myId = req.decoded.id;
+
+    const [provider, caller] = await Promise.all([
+      db.collection("users").findOne({ _id: new ObjectId(providerId), role: "provider" }),
+      db.collection("users").findOne({ _id: new ObjectId(myId) }, { projection: { blockedUsers: 1 } }),
+    ]);
 
     if (!provider) {
       return res.status(404).json({ message: "Provider not found" });
+    }
+
+    if (
+      provider.blockedUsers?.some((id) => id.toString() === myId) ||
+      caller?.blockedUsers?.some((id) => id.toString() === providerId)
+    ) {
+      return res.status(403).json({ message: "You cannot assign a job to this user" });
     }
 
     await db.collection("jobs").updateOne(

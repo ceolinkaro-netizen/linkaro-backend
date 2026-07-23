@@ -267,10 +267,14 @@ async function sendMessage(req, res) {
       .find((p) => p.toString() !== myId)
       .toString();
 
-    const recipient = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(otherId) }, { projection: { blockedUsers: 1 } });
-    if (recipient?.blockedUsers?.some((id) => id.toString() === myId)) {
+    const [recipient, sender] = await Promise.all([
+      db.collection("users").findOne({ _id: new ObjectId(otherId) }, { projection: { blockedUsers: 1 } }),
+      db.collection("users").findOne({ _id: new ObjectId(myId) }, { projection: { blockedUsers: 1 } }),
+    ]);
+    if (
+      recipient?.blockedUsers?.some((id) => id.toString() === myId) ||
+      sender?.blockedUsers?.some((id) => id.toString() === otherId)
+    ) {
       return res.status(403).json({ message: "You cannot send messages to this user" });
     }
 
