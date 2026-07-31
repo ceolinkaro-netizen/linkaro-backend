@@ -269,7 +269,7 @@ async function sendMessage(req, res) {
 
     const [recipient, sender] = await Promise.all([
       db.collection("users").findOne({ _id: new ObjectId(otherId) }, { projection: { blockedUsers: 1 } }),
-      db.collection("users").findOne({ _id: new ObjectId(myId) }, { projection: { blockedUsers: 1 } }),
+      db.collection("users").findOne({ _id: new ObjectId(myId) }, { projection: { blockedUsers: 1, name: 1 } }),
     ]);
     if (
       recipient?.blockedUsers?.some((id) => id.toString() === myId) ||
@@ -312,10 +312,6 @@ async function sendMessage(req, res) {
     );
 
     await touchLastSeen(db, myId);
-
-    const sender = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(myId) }, { projection: { name: 1 } });
 
     sendPushNotification({
       userId: otherId,
