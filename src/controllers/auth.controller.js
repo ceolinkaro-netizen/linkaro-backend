@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { ObjectId } = require("mongodb");
@@ -86,18 +87,49 @@ async function sendOtp(req, res) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.collection("otps").deleteMany({ email: user.email, purpose: "login" });
+    await db.collection("otps").insertOne({ email: user.email, code, purpose: "login", expiresAt });
 
     await sendEmail({
       to: user.email,
       subject: "Your Linkaro login code",
-      html: otpEmail(otp),
-      text: `Your Linkaro login verification code is: ${otp}. It expires in 10 minutes.`,
+      html: otpEmail(code),
+      text: `Your Linkaro login verification code is: ${code}. It expires in 10 minutes.`,
     });
 
-    return res.status(200).json({ success: true, otp });
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Send OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function verifyLoginOtp(req, res) {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ message: "Email and code are required" });
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  try {
+    const db = await getDb();
+    const record = await db.collection("otps").findOne({ email: normalizedEmail, purpose: "login" });
+
+    if (!record || new Date() > record.expiresAt) {
+      if (record) await db.collection("otps").deleteOne({ _id: record._id });
+      return res.status(400).json({ message: "Invalid or expired code. Please request a new one." });
+    }
+
+    if (record.code !== code) {
+      return res.status(400).json({ message: "Invalid verification code" });
+    }
+
+    await db.collection("otps").deleteOne({ _id: record._id });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -142,17 +174,49 @@ async function forgotSendOtp(req, res) {
     const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
     if (!user) return res.status(404).json({ message: "No account found with this email" });
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.collection("otps").deleteMany({ email: user.email, purpose: "forgot-password-admin" });
+    await db.collection("otps").insertOne({ email: user.email, code, purpose: "forgot-password-admin", expiresAt });
+
     await sendEmail({
       to: user.email,
       subject: "Reset your Linkaro password",
-      html: otpEmail(otp),
-      text: `Your Linkaro password reset code is: ${otp}. It expires in 10 minutes.`,
+      html: otpEmail(code),
+      text: `Your Linkaro password reset code is: ${code}. It expires in 10 minutes.`,
     });
 
-    return res.status(200).json({ success: true, otp });
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Forgot send OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function forgotVerifyOtp(req, res) {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ message: "Email and code are required" });
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  try {
+    const db = await getDb();
+    const record = await db.collection("otps").findOne({ email: normalizedEmail, purpose: "forgot-password-admin" });
+
+    if (!record || new Date() > record.expiresAt) {
+      if (record) await db.collection("otps").deleteOne({ _id: record._id });
+      return res.status(400).json({ message: "Invalid or expired code. Please request a new one." });
+    }
+
+    if (record.code !== code) {
+      return res.status(400).json({ message: "Invalid verification code" });
+    }
+
+    await db.collection("otps").deleteOne({ _id: record._id });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Forgot verify OTP error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -180,4 +244,4 @@ async function forgotResetPassword(req, res) {
   }
 }
 
-module.exports = { login, sendOtp, logout, me, forgotSendOtp, forgotResetPassword };
+module.exports = { login, sendOtp, verifyLoginOtp, logout, me, forgotSendOtp, forgotVerifyOtp, forgotResetPassword };

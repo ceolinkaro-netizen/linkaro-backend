@@ -6,6 +6,8 @@ const {
   providerLogin,
   resetPassword,
   sendOtp,
+  sendOtpV2,
+  verifyOtp,
   signupConsumer,
   signupProvider,
   switchRole,
@@ -18,6 +20,8 @@ router.post("/login", login);
 router.post("/provider-login", providerLogin);
 router.post("/reset-password", resetPassword);
 router.post("/send-otp", sendOtp);
+router.post("/send-otp-v2", sendOtpV2);
+router.post("/verify-otp", verifyOtp);
 router.post("/signup/consumer", signupConsumer);
 router.post("/signup/provider", signupProvider);
 router.post("/switch-role", verifyMobileToken, switchRole);

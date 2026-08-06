@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { ObjectId } = require("mongodb");
@@ -256,6 +257,8 @@ async function resetPassword(req, res) {
   }
 }
 
+// Legacy endpoint — kept for backward compatibility with older mobile builds.
+// Client generates OTP and sends it; backend just emails it.
 async function sendOtp(req, res) {
   const { email, code } = req.body;
 
@@ -270,12 +273,85 @@ async function sendOtp(req, res) {
       html: otpEmail(code),
     });
 
-    return res
-      .status(200)
-      .json({ success: true, message: "OTP sent successfully" });
+    return res.status(200).json({ success: true, message: "OTP sent successfully" });
   } catch (error) {
     console.error("Send OTP error:", error);
     return res.status(500).json({ message: "Failed to send email" });
+  }
+}
+
+// Secure endpoint — server generates and stores OTP; client never sees it.
+async function sendOtpV2(req, res) {
+  const { email, purpose } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const otpPurpose = purpose || "signup";
+
+  try {
+    const db = await getDb();
+
+    if (otpPurpose === "forgot-password") {
+      const user = await db.collection("users").findOne({ email: normalizedEmail });
+      if (!user) {
+        return res.status(404).json({ message: "No account found with this email" });
+      }
+    }
+
+    const code = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.collection("otps").deleteMany({ email: normalizedEmail, purpose: otpPurpose });
+    await db.collection("otps").insertOne({ email: normalizedEmail, code, purpose: otpPurpose, expiresAt });
+
+    await sendEmail({
+      to: normalizedEmail,
+      subject: "Your Verification Code",
+      html: otpEmail(code),
+    });
+
+    return res.status(200).json({ success: true, message: "OTP sent successfully" });
+  } catch (error) {
+    console.error("Send OTP V2 error:", error);
+    return res.status(500).json({ message: "Failed to send email" });
+  }
+}
+
+async function verifyOtp(req, res) {
+  const { email, code, purpose } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({ message: "Email and code are required" });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const otpPurpose = purpose || "signup";
+
+  try {
+    const db = await getDb();
+    const record = await db.collection("otps").findOne({ email: normalizedEmail, purpose: otpPurpose });
+
+    if (!record) {
+      return res.status(400).json({ message: "Invalid or expired code. Please request a new one." });
+    }
+
+    if (new Date() > record.expiresAt) {
+      await db.collection("otps").deleteOne({ _id: record._id });
+      return res.status(400).json({ message: "Code has expired. Please request a new one." });
+    }
+
+    if (record.code !== code) {
+      return res.status(400).json({ message: "Invalid verification code" });
+    }
+
+    await db.collection("otps").deleteOne({ _id: record._id });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 }
 
@@ -660,6 +736,8 @@ module.exports = {
   providerLogin,
   resetPassword,
   sendOtp,
+  sendOtpV2,
+  verifyOtp,
   signupConsumer,
   signupProvider,
   switchRole,

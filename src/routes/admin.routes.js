@@ -17,6 +17,7 @@ const {
   getUsers,
   sendNotification,
   sendProfileOtp,
+  verifyProfileOtp,
   toggleSubscriptionRequired,
   updateManager,
   updateProfile,
@@ -52,6 +53,7 @@ router.post("/update-subscription-status", updateSubscriptionStatus);
 router.post("/update-ticket", updateTicket);
 router.post("/update-user", updateUser);
 router.post("/send-profile-otp", sendProfileOtp);
+router.post("/verify-profile-otp", verifyProfileOtp);
 router.post("/update-profile", updateProfile);
 router.post("/upload-image", uploadImage);
 router.get("/get-device-stats", getUserDeviceStats);

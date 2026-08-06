@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { ObjectId } = require("mongodb");
 const bcrypt = require("bcryptjs");
 const { getDb } = require("../config/db");
@@ -1027,18 +1028,53 @@ async function sendProfileOtp(req, res) {
     );
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.collection("otps").deleteMany({ email: user.email, purpose: "profile-change" });
+    await db.collection("otps").insertOne({ email: user.email, code, purpose: "profile-change", expiresAt });
 
     await sendEmail({
       to: user.email,
       subject: "Your Linkaro verification code",
-      html: otpEmail(otp),
-      text: `Your Linkaro verification code is: ${otp}. It expires in 10 minutes.`,
+      html: otpEmail(code),
+      text: `Your Linkaro verification code is: ${code}. It expires in 10 minutes.`,
     });
 
-    return res.status(200).json({ success: true, otp });
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Send profile OTP error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function verifyProfileOtp(req, res) {
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne(
+      { _id: new ObjectId(req.user.id) },
+      { projection: { email: 1 } }
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: "Code is required" });
+
+    const record = await db.collection("otps").findOne({ email: user.email, purpose: "profile-change" });
+
+    if (!record || new Date() > record.expiresAt) {
+      if (record) await db.collection("otps").deleteOne({ _id: record._id });
+      return res.status(400).json({ message: "Invalid or expired code. Please request a new one." });
+    }
+
+    if (record.code !== code) {
+      return res.status(400).json({ message: "Invalid verification code" });
+    }
+
+    await db.collection("otps").deleteOne({ _id: record._id });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Verify profile OTP error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -1093,6 +1129,7 @@ module.exports = {
   getUsers,
   sendNotification,
   sendProfileOtp,
+  verifyProfileOtp,
   toggleSubscriptionRequired,
   updateManager,
   updateSubscriptionStatus,
