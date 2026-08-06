@@ -11,6 +11,10 @@ const {
   signupConsumer,
   signupProvider,
   switchRole,
+  webLogin,
+  webProviderLogin,
+  webLogout,
+  getSocketToken,
 } = require("../../controllers/mobile/auth.controller");
 
 const router = express.Router();
@@ -25,5 +29,11 @@ router.post("/verify-otp", verifyOtp);
 router.post("/signup/consumer", signupConsumer);
 router.post("/signup/provider", signupProvider);
 router.post("/switch-role", verifyMobileToken, switchRole);
+
+// Web-app-only endpoints — cookie-based, never return token in body
+router.post("/web-login", webLogin);
+router.post("/web-provider-login", webProviderLogin);
+router.post("/web-logout", webLogout);
+router.get("/socket-token", verifyMobileToken, getSocketToken);
 
 module.exports = router;

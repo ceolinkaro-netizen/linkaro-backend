@@ -1,10 +1,10 @@
 const jwt = require("jsonwebtoken");
 const env = require("../config/env");
 
-// Mobile endpoints accept the JWT as `token` in the body (POST) or query string (GET),
-// matching the mobile app's existing request contract.
+// Web app sends JWT as an HttpOnly cookie (web_token).
+// Mobile app sends it in the request body (POST) or query string (GET).
 function verifyMobileToken(req, res, next) {
-  const token = req.body?.token || req.query?.token;
+  const token = req.cookies?.web_token || req.body?.token || req.query?.token;
 
   if (!token) {
     return res.status(400).json({ message: "Token is required" });

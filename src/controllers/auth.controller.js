@@ -56,7 +56,7 @@ async function login(req, res) {
     );
 
     const redirectTo = ROLE_ROUTES[user.role] || "/admin/dashboard";
-    return res.status(200).json({ success: true, role: user.role, redirectTo, token });
+    return res.status(200).json({ success: true, role: user.role, redirectTo });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ message: "Internal server error" });

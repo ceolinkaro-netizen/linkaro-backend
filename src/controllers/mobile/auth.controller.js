@@ -721,6 +721,12 @@ async function switchRole(req, res) {
       { expiresIn: "30d" },
     );
 
+    // Web app: update the HttpOnly cookie, return no token in body.
+    if (req.cookies?.web_token) {
+      _setWebCookie(res, token, true);
+      return res.status(200).json({ success: true, role: targetUser.role });
+    }
+
     return res
       .status(200)
       .json({ success: true, token, role: targetUser.role });
@@ -728,6 +734,159 @@ async function switchRole(req, res) {
     console.error("Switch role error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
+}
+
+// ── Web-specific auth helpers ────────────────────────────────────────────────
+
+function _setWebCookie(res, token, rememberMe) {
+  const isProduction = env.nodeEnv === "production";
+  const parts = [
+    `web_token=${token}`,
+    "HttpOnly",
+    "Path=/",
+    rememberMe ? `Max-Age=${30 * 24 * 60 * 60}` : "",
+    `SameSite=${isProduction ? "None" : "Lax"}`,
+    isProduction ? "Secure" : "",
+  ].filter(Boolean);
+  res.setHeader("Set-Cookie", parts.join("; "));
+}
+
+async function webLogin(req, res) {
+  const { email, password, role, rememberMe = false } = req.body;
+
+  if (!email || !password || !role) {
+    return res.status(400).json({ message: "Email, password and role are required" });
+  }
+  if (!VALID_ROLES.includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim(), role });
+
+    if (!user || user.isActive === false) {
+      return res.status(404).json({ message: "There is no user registered with this email" });
+    }
+
+    const isHashed = /^\$2[aby]\$/.test(user.password);
+    const passwordMatch = isHashed
+      ? await bcrypt.compare(password, user.password)
+      : password === user.password;
+
+    if (!passwordMatch) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    if (role === "provider" && user.registrationStatus === false) {
+      return res.status(200).json({ success: false, registrationPending: true });
+    }
+
+    const token = jwt.sign(
+      { id: user._id.toString(), email: user.email, role: user.role },
+      env.secretKey,
+      { expiresIn: rememberMe ? "30d" : "1d" },
+    );
+
+    _setWebCookie(res, token, rememberMe);
+
+    db.collection("users").updateOne(
+      { _id: user._id },
+      { $set: { lastLoginPlatform: "web", lastLoginAt: new Date() } },
+    ).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profileImage: user.profileImage || null,
+      },
+    });
+  } catch (error) {
+    console.error("Web login error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function webProviderLogin(req, res) {
+  const { email, name, profileImage, provider, providerId, role } = req.body;
+
+  if (!email || !provider || !providerId) {
+    return res.status(400).json({ message: "Email, provider and providerId are required" });
+  }
+
+  const normalizedRole = VALID_ROLES.includes(role) ? role : "consumer";
+
+  try {
+    const db = await getDb();
+    const user = await db.collection("users").findOne({
+      email: email.toLowerCase().trim(),
+      role: normalizedRole,
+    });
+
+    if (!user || user.isActive === false) {
+      return res.status(200).json({ success: false, newUser: true });
+    }
+
+    if (normalizedRole === "provider" && user.registrationStatus === false) {
+      return res.status(200).json({ success: false, registrationPending: true });
+    }
+
+    const token = jwt.sign(
+      { id: user._id.toString(), email: user.email, role: user.role },
+      env.secretKey,
+      { expiresIn: "30d" },
+    );
+
+    _setWebCookie(res, token, true);
+
+    db.collection("users").updateOne(
+      { _id: user._id },
+      { $set: { lastLoginPlatform: "web", lastLoginAt: new Date() } },
+    ).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profileImage: user.profileImage || null,
+      },
+    });
+  } catch (error) {
+    console.error("Web provider login error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+function webLogout(req, res) {
+  const isProduction = env.nodeEnv === "production";
+  const parts = [
+    "web_token=",
+    "HttpOnly",
+    "Path=/",
+    "Max-Age=0",
+    `SameSite=${isProduction ? "None" : "Lax"}`,
+    isProduction ? "Secure" : "",
+  ].filter(Boolean);
+  res.setHeader("Set-Cookie", parts.join("; "));
+  return res.status(200).json({ success: true });
+}
+
+function getSocketToken(req, res) {
+  const user = req.decoded;
+  if (!user) return res.status(401).json({ message: "Unauthorized" });
+  const socketToken = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    env.secretKey,
+    { expiresIn: "2h" },
+  );
+  return res.status(200).json({ success: true, token: socketToken });
 }
 
 module.exports = {
@@ -741,4 +900,8 @@ module.exports = {
   signupConsumer,
   signupProvider,
   switchRole,
+  webLogin,
+  webProviderLogin,
+  webLogout,
+  getSocketToken,
 };
