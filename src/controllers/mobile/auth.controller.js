@@ -301,11 +301,16 @@ async function sendOtpV2(req, res) {
       }
     }
 
+    const existing = await db.collection("otps").findOne({ email: normalizedEmail, purpose: otpPurpose });
+    if (existing && existing.createdAt && Date.now() - existing.createdAt.getTime() < 120 * 1000) {
+      return res.status(429).json({ message: "Please wait before requesting another code" });
+    }
+
     const code = String(crypto.randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await db.collection("otps").deleteMany({ email: normalizedEmail, purpose: otpPurpose });
-    await db.collection("otps").insertOne({ email: normalizedEmail, code, purpose: otpPurpose, expiresAt });
+    await db.collection("otps").insertOne({ email: normalizedEmail, code, purpose: otpPurpose, expiresAt, createdAt: new Date(), attempts: 0 });
 
     await sendEmail({
       to: normalizedEmail,
@@ -344,6 +349,12 @@ async function verifyOtp(req, res) {
     }
 
     if (record.code !== code) {
+      const attempts = (record.attempts || 0) + 1;
+      if (attempts >= 5) {
+        await db.collection("otps").deleteOne({ _id: record._id });
+        return res.status(400).json({ message: "Too many incorrect attempts. Please request a new code." });
+      }
+      await db.collection("otps").updateOne({ _id: record._id }, { $set: { attempts } });
       return res.status(400).json({ message: "Invalid verification code" });
     }
 

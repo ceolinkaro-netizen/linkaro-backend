@@ -87,11 +87,16 @@ async function sendOtp(req, res) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    const existingOtp = await db.collection("otps").findOne({ email: user.email, purpose: "login" });
+    if (existingOtp?.createdAt && Date.now() - existingOtp.createdAt.getTime() < 120 * 1000) {
+      return res.status(429).json({ message: "Please wait before requesting another code" });
+    }
+
     const code = String(crypto.randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await db.collection("otps").deleteMany({ email: user.email, purpose: "login" });
-    await db.collection("otps").insertOne({ email: user.email, code, purpose: "login", expiresAt });
+    await db.collection("otps").insertOne({ email: user.email, code, purpose: "login", expiresAt, createdAt: new Date(), attempts: 0 });
 
     await sendEmail({
       to: user.email,
@@ -123,6 +128,12 @@ async function verifyLoginOtp(req, res) {
     }
 
     if (record.code !== code) {
+      const attempts = (record.attempts || 0) + 1;
+      if (attempts >= 5) {
+        await db.collection("otps").deleteOne({ _id: record._id });
+        return res.status(400).json({ message: "Too many incorrect attempts. Please request a new code." });
+      }
+      await db.collection("otps").updateOne({ _id: record._id }, { $set: { attempts } });
       return res.status(400).json({ message: "Invalid verification code" });
     }
 
@@ -174,11 +185,16 @@ async function forgotSendOtp(req, res) {
     const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
     if (!user) return res.status(404).json({ message: "No account found with this email" });
 
+    const existingForgot = await db.collection("otps").findOne({ email: user.email, purpose: "forgot-password-admin" });
+    if (existingForgot?.createdAt && Date.now() - existingForgot.createdAt.getTime() < 120 * 1000) {
+      return res.status(429).json({ message: "Please wait before requesting another code" });
+    }
+
     const code = String(crypto.randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await db.collection("otps").deleteMany({ email: user.email, purpose: "forgot-password-admin" });
-    await db.collection("otps").insertOne({ email: user.email, code, purpose: "forgot-password-admin", expiresAt });
+    await db.collection("otps").insertOne({ email: user.email, code, purpose: "forgot-password-admin", expiresAt, createdAt: new Date(), attempts: 0 });
 
     await sendEmail({
       to: user.email,
@@ -210,6 +226,12 @@ async function forgotVerifyOtp(req, res) {
     }
 
     if (record.code !== code) {
+      const attempts = (record.attempts || 0) + 1;
+      if (attempts >= 5) {
+        await db.collection("otps").deleteOne({ _id: record._id });
+        return res.status(400).json({ message: "Too many incorrect attempts. Please request a new code." });
+      }
+      await db.collection("otps").updateOne({ _id: record._id }, { $set: { attempts } });
       return res.status(400).json({ message: "Invalid verification code" });
     }
 
