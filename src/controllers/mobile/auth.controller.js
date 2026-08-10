@@ -67,12 +67,12 @@ async function checkAvailability(req, res) {
 }
 
 async function login(req, res) {
-  const { email, password, role, platform } = req.body;
+  const { email, phone, dialCode, password, role, platform } = req.body;
 
-  if (!email || !password || !role) {
+  if ((!email && !phone) || !password || !role) {
     return res
       .status(400)
-      .json({ message: "Email, password and role are required" });
+      .json({ message: "Email or phone, password and role are required" });
   }
 
   if (!VALID_ROLES.includes(role)) {
@@ -84,16 +84,27 @@ async function login(req, res) {
   try {
     const db = await getDb();
 
-    const user = await db
-      .collection("users")
-      .findOne({ email: email.toLowerCase().trim(), role: role });
-
-    // A deactivated account (from "Delete Account") looks identical to a
-    // non-existent one — it can only come back via signup, which reactivates it.
-    if (!user || user.isActive === false) {
-      return res
-        .status(404)
-        .json({ message: "There is no user registered with this email" });
+    let user;
+    if (phone) {
+      const prefix = (dialCode || "+92").trim();
+      const fullPhone = `${prefix}${phone.trim()}`;
+      user = await db.collection("users").findOne({ phone: fullPhone, role });
+      if (!user || user.isActive === false) {
+        return res
+          .status(404)
+          .json({ message: "No account found with this phone number" });
+      }
+    } else {
+      user = await db
+        .collection("users")
+        .findOne({ email: email.toLowerCase().trim(), role });
+      // A deactivated account (from "Delete Account") looks identical to a
+      // non-existent one — it can only come back via signup, which reactivates it.
+      if (!user || user.isActive === false) {
+        return res
+          .status(404)
+          .json({ message: "There is no user registered with this email" });
+      }
     }
 
     const isHashed = /^\$2[aby]\$/.test(user.password);
@@ -102,7 +113,7 @@ async function login(req, res) {
       : password === user.password;
 
     if (!passwordMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: phone ? "Invalid phone or password" : "Invalid email or password" });
     }
 
     if (user.role !== role) {

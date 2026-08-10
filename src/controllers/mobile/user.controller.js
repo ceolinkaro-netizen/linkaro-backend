@@ -185,7 +185,11 @@ async function providerDetail(req, res) {
         review: { $exists: true, $ne: "" },
       })
       .sort({ completedAt: -1 })
-      .project({ rating: 1, review: 1, completedAt: 1, userId: 1 })
+      .project({
+        rating: 1, review: 1, completedAt: 1, userId: 1,
+        title: 1, category: 1, problem: 1, status: 1,
+        priority: 1, scheduledTime: 1, location: 1, createdAt: 1,
+      })
       .toArray();
 
     const consumerIds = [
@@ -207,6 +211,17 @@ async function providerDetail(req, res) {
         completedAt: job.completedAt,
         consumerName: consumer?.name ?? null,
         consumerProfileImage: consumer?.profileImage ?? null,
+        job: {
+          _id: job._id,
+          title: job.title ?? "",
+          category: job.category ?? "",
+          problem: job.problem ?? "",
+          status: job.status ?? "completed",
+          priority: job.priority ?? "Medium",
+          scheduledTime: job.scheduledTime ?? "",
+          location: job.location ?? "",
+          createdAt: job.createdAt,
+        },
       };
     });
 
