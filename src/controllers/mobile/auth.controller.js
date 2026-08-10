@@ -774,10 +774,10 @@ function _setWebCookie(res, token, rememberMe) {
 }
 
 async function webLogin(req, res) {
-  const { email, password, role, rememberMe = false } = req.body;
+  const { email, phone, dialCode, password, role, rememberMe = false } = req.body;
 
-  if (!email || !password || !role) {
-    return res.status(400).json({ message: "Email, password and role are required" });
+  if ((!email && !phone) || !password || !role) {
+    return res.status(400).json({ message: "Email or phone, password and role are required" });
   }
   if (!VALID_ROLES.includes(role)) {
     return res.status(400).json({ message: "Invalid role" });
@@ -785,10 +785,20 @@ async function webLogin(req, res) {
 
   try {
     const db = await getDb();
-    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim(), role });
 
-    if (!user || user.isActive === false) {
-      return res.status(404).json({ message: "There is no user registered with this email" });
+    let user;
+    if (phone) {
+      const prefix = (dialCode || "+92").trim();
+      const fullPhone = `${prefix}${phone.trim()}`;
+      user = await db.collection("users").findOne({ phone: fullPhone, role });
+      if (!user || user.isActive === false) {
+        return res.status(404).json({ message: "No account found with this phone number" });
+      }
+    } else {
+      user = await db.collection("users").findOne({ email: email.toLowerCase().trim(), role });
+      if (!user || user.isActive === false) {
+        return res.status(404).json({ message: "There is no user registered with this email" });
+      }
     }
 
     const isHashed = /^\$2[aby]\$/.test(user.password);
@@ -797,7 +807,7 @@ async function webLogin(req, res) {
       : password === user.password;
 
     if (!passwordMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: phone ? "Invalid phone or password" : "Invalid email or password" });
     }
 
     if (role === "provider" && user.registrationStatus === false) {
