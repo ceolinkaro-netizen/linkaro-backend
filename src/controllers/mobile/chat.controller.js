@@ -141,6 +141,7 @@ async function startConversation(req, res) {
         conversationId: existing._id,
         jobTitle: existing.jobTitle ?? null,
         status: existing.status ?? "active",
+        isNew: false,
       });
     }
 
@@ -168,6 +169,7 @@ async function startConversation(req, res) {
       conversationId: result.insertedId,
       jobTitle: doc.jobTitle,
       status: "active",
+      isNew: true,
     });
   } catch (error) {
     console.error("Start conversation error:", error);
@@ -538,6 +540,35 @@ async function sendMessage(req, res) {
   }
 }
 
+async function discardConversation(req, res) {
+  const { id } = req.params;
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Invalid conversation id" });
+  }
+  try {
+    const db = await getDb();
+    const myId = req.decoded.id;
+    const conv = await db.collection("conversations").findOne({
+      _id: new ObjectId(id),
+      participants: new ObjectId(myId),
+    });
+    if (!conv) return res.status(404).json({ message: "Not found" });
+
+    const msgCount = await db
+      .collection("messages")
+      .countDocuments({ conversationId: new ObjectId(id) });
+    if (msgCount > 0) {
+      return res.status(400).json({ message: "Conversation has messages" });
+    }
+
+    await db.collection("conversations").deleteOne({ _id: new ObjectId(id) });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Discard conversation error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 module.exports = {
   startConversation,
   getConversations,
@@ -546,4 +577,5 @@ module.exports = {
   sendMessage,
   lockJobConversations,
   closeJobConversation,
+  discardConversation,
 };
