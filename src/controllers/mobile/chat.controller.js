@@ -252,14 +252,34 @@ async function getMyOpenJobs(req, res) {
   try {
     const db = await getDb();
     const myId = req.decoded.id;
+    const providerId = req.query.providerId;
+
+    // Determine which job categories the provider covers
+    let allowedCategories = null;
+    if (providerId) {
+      const provider = await db
+        .collection("users")
+        .findOne(
+          { _id: new ObjectId(providerId) },
+          { projection: { categories: 1 } }
+        );
+      if (provider?.categories?.length) {
+        allowedCategories = provider.categories;
+      }
+    }
+
+    const jobQuery = {
+      userId: new ObjectId(myId),
+      status: "open",
+      assignedProviderId: { $exists: false },
+    };
+    if (allowedCategories) {
+      jobQuery.category = { $in: allowedCategories };
+    }
 
     const jobs = await db
       .collection("jobs")
-      .find({
-        userId: new ObjectId(myId),
-        status: "open",
-        assignedProviderId: { $exists: false },
-      })
+      .find(jobQuery)
       .project({ title: 1, category: 1, createdAt: 1 })
       .sort({ createdAt: -1 })
       .toArray();
