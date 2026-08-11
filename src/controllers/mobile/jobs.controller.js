@@ -14,54 +14,52 @@ const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 async function myJobs(req, res) {
   try {
     const db = await getDb();
+    const now = Date.now();
 
     const jobs = await db
       .collection("jobs")
-      .find({
-        userId: new ObjectId(req.decoded.id),
-        status: { $ne: "expired" },
-      })
-      .sort({ createdAt: -1 })
+      .aggregate([
+        {
+          $match: {
+            userId: new ObjectId(req.decoded.id),
+            status: { $ne: "expired" },
+          },
+        },
+        { $sort: { createdAt: -1 } },
+        {
+          $lookup: {
+            from: "users",
+            let: { pid: "$assignedProviderId" },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$_id", "$$pid"] } } },
+              {
+                $project: {
+                  name: 1,
+                  profileImage: 1,
+                  rating: 1,
+                  category: 1,
+                  phone: 1,
+                  jobsCompleted: 1,
+                  lastSeenAt: 1,
+                },
+              },
+            ],
+            as: "providerData",
+          },
+        },
+      ])
       .toArray();
 
-    const providerIds = [
-      ...new Set(
-        jobs
-          .filter((job) => job.assignedProviderId)
-          .map((job) => job.assignedProviderId.toString()),
-      ),
-    ].map((id) => new ObjectId(id));
-
-    let providerMap = new Map();
-    if (providerIds.length) {
-      const providers = await db
-        .collection("users")
-        .find({ _id: { $in: providerIds } })
-        .project({
-          name: 1,
-          profileImage: 1,
-          rating: 1,
-          category: 1,
-          phone: 1,
-          jobsCompleted: 1,
-          lastSeenAt: 1,
-        })
-        .toArray();
-      providerMap = new Map(providers.map((p) => [p._id.toString(), p]));
-    }
-
-    const now = Date.now();
-
     const result = jobs.map((job) => {
-      const provider = job.assignedProviderId
-        ? providerMap.get(job.assignedProviderId.toString())
-        : null;
-      if (!provider) return job;
+      const provider = job.providerData?.[0] ?? null;
+      const { providerData, ...jobWithout } = job;
+      if (!provider) return jobWithout;
+
       const lastSeenAt = provider.lastSeenAt
         ? new Date(provider.lastSeenAt).getTime()
         : 0;
       return {
-        ...job,
+        ...jobWithout,
         assignedTo: provider.name ?? null,
         providerImage: provider.profileImage ?? null,
         providerRating: provider.rating ?? null,
