@@ -7,6 +7,7 @@ const {
   jobHiredEmail,
   jobCompletedEmail,
 } = require("../../lib/mailer");
+const { lockJobConversations, closeJobConversation } = require("./chat.controller");
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 
@@ -201,6 +202,11 @@ async function assignProvider(req, res) {
       });
     }
 
+    // Lock all chat sessions for this job except the hired provider's
+    lockJobConversations(db, io, id, providerId).catch((err) =>
+      console.error("Lock conversations error:", err)
+    );
+
     createNotification({
       userId: provider._id,
       type: "job_hired",
@@ -309,6 +315,11 @@ async function completeJob(req, res) {
           review: review.trim(),
         },
       },
+    );
+
+    // Close the hired provider's chat session for this job
+    closeJobConversation(db, req.app.get("io"), id).catch((err) =>
+      console.error("Close conversation error:", err)
     );
 
     if (job.assignedProviderId) {

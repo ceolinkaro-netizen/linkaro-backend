@@ -5,6 +5,7 @@ const { sendPushNotification } = require("../../lib/push");
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 20;
+const INBOX_LIMIT = 10;
 const VALID_TYPES = ["text", "image", "location", "voice"];
 
 function sortedParticipants(a, b) {
@@ -38,7 +39,73 @@ async function buildConversationSummary(db, conversation, forUserId) {
     lastMessage: conversation.lastMessage,
     unreadCount: conversation.unreadCount?.[forUserId] ?? 0,
     updatedAt: conversation.updatedAt,
+    jobId: conversation.jobId?.toString() ?? null,
+    jobTitle: conversation.jobTitle ?? null,
+    status: conversation.status ?? "active",
   };
+}
+
+// Called by jobs controller after a provider is hired.
+// Locks all conversations for the job except the hired provider's.
+async function lockJobConversations(db, io, jobId, hiredProviderId) {
+  const jobObjId = new ObjectId(jobId);
+  const providerObjId = new ObjectId(hiredProviderId);
+
+  const conversations = await db
+    .collection("conversations")
+    .find({ jobId: jobObjId })
+    .toArray();
+
+  for (const conv of conversations) {
+    const isHiredSession = conv.participants.some(
+      (p) => p.toString() === hiredProviderId
+    );
+    if (!isHiredSession) {
+      await db
+        .collection("conversations")
+        .updateOne({ _id: conv._id }, { $set: { status: "locked" } });
+      if (io) {
+        io.to(`conv:${conv._id.toString()}`).emit("conversation_status_changed", {
+          conversationId: conv._id.toString(),
+          status: "locked",
+        });
+        // Update inbox tiles for both participants
+        for (const p of conv.participants) {
+          io.to(`user:${p.toString()}`).emit("conversation_update", {
+            conversationId: conv._id.toString(),
+            status: "locked",
+          });
+        }
+      }
+    }
+  }
+}
+
+// Called by jobs controller when a job is completed.
+// Closes the active (hired provider) conversation for the job.
+async function closeJobConversation(db, io, jobId) {
+  const conv = await db
+    .collection("conversations")
+    .findOne({ jobId: new ObjectId(jobId), status: "active" });
+
+  if (!conv) return;
+
+  await db
+    .collection("conversations")
+    .updateOne({ _id: conv._id }, { $set: { status: "closed" } });
+
+  if (io) {
+    io.to(`conv:${conv._id.toString()}`).emit("conversation_status_changed", {
+      conversationId: conv._id.toString(),
+      status: "closed",
+    });
+    for (const p of conv.participants) {
+      io.to(`user:${p.toString()}`).emit("conversation_update", {
+        conversationId: conv._id.toString(),
+        status: "closed",
+      });
+    }
+  }
 }
 
 async function startConversation(req, res) {
@@ -46,6 +113,9 @@ async function startConversation(req, res) {
 
   if (!otherUserId || !ObjectId.isValid(otherUserId)) {
     return res.status(400).json({ message: "Valid otherUserId is required" });
+  }
+  if (!jobId || !ObjectId.isValid(jobId)) {
+    return res.status(400).json({ message: "Valid jobId is required" });
   }
   if (otherUserId === req.decoded.id) {
     return res.status(400).json({ message: "Cannot start a conversation with yourself" });
@@ -57,19 +127,34 @@ async function startConversation(req, res) {
       new ObjectId(req.decoded.id),
       new ObjectId(otherUserId)
     );
+    const jobObjId = new ObjectId(jobId);
 
+    // One session per pair per job — return existing if found
     const existing = await db.collection("conversations").findOne({
       participants,
+      jobId: jobObjId,
     });
 
     if (existing) {
-      return res.status(200).json({ success: true, conversationId: existing._id });
+      return res.status(200).json({
+        success: true,
+        conversationId: existing._id,
+        jobTitle: existing.jobTitle ?? null,
+        status: existing.status ?? "active",
+      });
     }
+
+    const job = await db.collection("jobs").findOne(
+      { _id: jobObjId },
+      { projection: { title: 1 } }
+    );
 
     const now = new Date();
     const doc = {
       participants,
-      jobId: jobId && ObjectId.isValid(jobId) ? new ObjectId(jobId) : null,
+      jobId: jobObjId,
+      jobTitle: job?.title ?? null,
+      status: "active",
       lastMessage: null,
       unreadCount: {},
       createdAt: now,
@@ -78,7 +163,12 @@ async function startConversation(req, res) {
 
     const result = await db.collection("conversations").insertOne(doc);
 
-    return res.status(201).json({ success: true, conversationId: result.insertedId });
+    return res.status(201).json({
+      success: true,
+      conversationId: result.insertedId,
+      jobTitle: doc.jobTitle,
+      status: "active",
+    });
   } catch (error) {
     console.error("Start conversation error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -89,14 +179,26 @@ async function getConversations(req, res) {
   try {
     const db = await getDb();
     const myId = req.decoded.id;
+    const limit = Math.min(Number(req.query.limit) || INBOX_LIMIT, MAX_LIMIT);
+    const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
 
     await touchLastSeen(db, myId);
 
-    const conversations = await db
+    const query = { participants: new ObjectId(myId) };
+    if (cursor && !isNaN(cursor.getTime())) {
+      query.updatedAt = { $lt: cursor };
+    }
+
+    // Fetch one extra to determine hasMore
+    const docs = await db
       .collection("conversations")
-      .find({ participants: new ObjectId(myId) })
+      .find(query)
       .sort({ updatedAt: -1 })
+      .limit(limit + 1)
       .toArray();
+
+    const hasMore = docs.length > limit;
+    const conversations = docs.slice(0, limit);
 
     const otherIds = [
       ...new Set(
@@ -128,12 +230,50 @@ async function getConversations(req, res) {
         lastMessage: c.lastMessage,
         unreadCount: c.unreadCount?.[myId] ?? 0,
         updatedAt: c.updatedAt,
+        jobId: c.jobId?.toString() ?? null,
+        jobTitle: c.jobTitle ?? null,
+        status: c.status ?? "active",
       };
     });
 
-    return res.status(200).json({ success: true, conversations: result });
+    // nextCursor is the updatedAt of the last returned item
+    const nextCursor = conversations.length > 0
+      ? conversations[conversations.length - 1].updatedAt?.toISOString()
+      : null;
+
+    return res.status(200).json({ success: true, conversations: result, hasMore, nextCursor });
   } catch (error) {
     console.error("Get conversations error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function getMyOpenJobs(req, res) {
+  try {
+    const db = await getDb();
+    const myId = req.decoded.id;
+
+    const jobs = await db
+      .collection("jobs")
+      .find({
+        userId: new ObjectId(myId),
+        status: "open",
+        assignedProviderId: { $exists: false },
+      })
+      .project({ title: 1, category: 1, createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return res.status(200).json({
+      success: true,
+      jobs: jobs.map((j) => ({
+        _id: j._id.toString(),
+        title: j.title,
+        category: j.category ?? null,
+      })),
+    });
+  } catch (error) {
+    console.error("Get open jobs error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -263,6 +403,18 @@ async function sendMessage(req, res) {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const convStatus = conversation.status ?? "active";
+    if (convStatus === "closed") {
+      return res.status(403).json({ message: "This conversation is closed" });
+    }
+    if (convStatus === "locked") {
+      // Only the hired provider (the one participant who is a provider) can still
+      // send messages — but at this point the session is already locked for
+      // everyone. The hired provider's session stays "active"; locked means
+      // this is NOT the hired session.
+      return res.status(403).json({ message: "This conversation is read-only" });
+    }
+
     const otherId = conversation.participants
       .find((p) => p.toString() !== myId)
       .toString();
@@ -369,6 +521,9 @@ async function sendMessage(req, res) {
 module.exports = {
   startConversation,
   getConversations,
+  getMyOpenJobs,
   getMessages,
   sendMessage,
+  lockJobConversations,
+  closeJobConversation,
 };
