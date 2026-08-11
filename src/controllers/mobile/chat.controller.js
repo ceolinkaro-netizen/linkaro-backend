@@ -184,7 +184,7 @@ async function getConversations(req, res) {
 
     await touchLastSeen(db, myId);
 
-    const query = { participants: new ObjectId(myId) };
+    const query = { participants: new ObjectId(myId), jobId: { $exists: true } };
     if (cursor && !isNaN(cursor.getTime())) {
       query.updatedAt = { $lt: cursor };
     }
