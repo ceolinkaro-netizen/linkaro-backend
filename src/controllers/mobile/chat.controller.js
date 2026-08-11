@@ -123,8 +123,28 @@ async function startConversation(req, res) {
 
   try {
     const db = await getDb();
+    const myId = req.decoded.id;
+
+    // Block check — neither party may start a session with the other if blocked
+    const [me, other] = await Promise.all([
+      db.collection("users").findOne(
+        { _id: new ObjectId(myId) },
+        { projection: { blockedUsers: 1 } }
+      ),
+      db.collection("users").findOne(
+        { _id: new ObjectId(otherUserId) },
+        { projection: { blockedUsers: 1 } }
+      ),
+    ]);
+    if (
+      me?.blockedUsers?.some((id) => id.toString() === otherUserId) ||
+      other?.blockedUsers?.some((id) => id.toString() === myId)
+    ) {
+      return res.status(403).json({ message: "You cannot start a conversation with this user" });
+    }
+
     const participants = sortedParticipants(
-      new ObjectId(req.decoded.id),
+      new ObjectId(myId),
       new ObjectId(otherUserId)
     );
     const jobObjId = new ObjectId(jobId);
