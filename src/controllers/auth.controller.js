@@ -43,16 +43,17 @@ async function login(req, res) {
       { expiresIn: "7d" },
     );
 
-    // Use SameSite=None;Secure unless the request is coming from localhost
-    // (where http is used and Secure would block the cookie). This avoids
-    // relying on NODE_ENV being set correctly on the hosting platform.
+    // dashboard.linkaroapp.com and api.linkaroapp.com share the same
+    // registrable domain, so SameSite=Lax works and HttpOnly is preserved.
+    // Locally (localhost) omit the Domain flag so the cookie still works
+    // across ports during development.
     const origin = req.headers.origin || "";
     const isLocal = /^https?:\/\/localhost(:\d+)?$/.test(origin);
-    const sameSite = isLocal ? "Lax" : "None";
+    const domainFlag = isLocal ? "" : "; Domain=.linkaroapp.com";
     const secureFlag = isLocal ? "" : "; Secure";
     res.setHeader(
       "Set-Cookie",
-      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}${secureFlag}`,
+      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax${domainFlag}${secureFlag}`,
     );
 
     const redirectTo = ROLE_ROUTES[user.role] || "/admin/dashboard";
@@ -148,11 +149,11 @@ async function verifyLoginOtp(req, res) {
 function logout(req, res) {
   const origin = req.headers.origin || "";
   const isLocal = /^https?:\/\/localhost(:\d+)?$/.test(origin);
-  const sameSite = isLocal ? "Lax" : "None";
+  const domainFlag = isLocal ? "" : "; Domain=.linkaroapp.com";
   const secureFlag = isLocal ? "" : "; Secure";
   res.setHeader(
     "Set-Cookie",
-    `token=; HttpOnly; Path=/; Max-Age=0; SameSite=${sameSite}${secureFlag}`,
+    `token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${domainFlag}${secureFlag}`,
   );
   return res.status(200).json({ success: true });
 }
