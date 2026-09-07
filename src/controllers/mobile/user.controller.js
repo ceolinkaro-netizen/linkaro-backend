@@ -74,10 +74,15 @@ async function listProviders(req, res) {
 
     const radiusKm = Number(req.query.radius) || 10;
 
-    const currentUser = await db.collection("users").findOne(
-      { _id: new ObjectId(req.decoded.id) },
-      { projection: { email: 1 } }
-    );
+    const [currentUser, subSetting] = await Promise.all([
+      db.collection("users").findOne(
+        { _id: new ObjectId(req.decoded.id) },
+        { projection: { email: 1 } }
+      ),
+      db.collection("settings").findOne({ key: "subscriptionRequired" }),
+    ]);
+
+    const subscriptionRequired = subSetting?.value !== false;
 
     const providers = await db
       .collection("users")
@@ -91,7 +96,7 @@ async function listProviders(req, res) {
             query: {
               role: "provider",
               registrationStatus: true,
-              subscriptionStatus: "active",
+              ...(subscriptionRequired && { subscriptionStatus: "active" }),
               ...(currentUser?.email && { email: { $ne: currentUser.email } }),
             },
           },
