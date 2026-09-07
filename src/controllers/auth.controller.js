@@ -43,16 +43,16 @@ async function login(req, res) {
       { expiresIn: "7d" },
     );
 
-    // In production the dashboard (Vercel) and this API (Render) are on
-    // different domains, so the cookie must be SameSite=None (which itself
-    // requires Secure) to be sent on cross-site fetch calls at all. Locally
-    // both run on "localhost" (just different ports), where Lax is fine and
-    // Secure would block the cookie over plain http.
-    const isProduction = env.nodeEnv === "production";
-    const sameSite = isProduction ? "None" : "Lax";
+    // Use SameSite=None;Secure unless the request is coming from localhost
+    // (where http is used and Secure would block the cookie). This avoids
+    // relying on NODE_ENV being set correctly on the hosting platform.
+    const origin = req.headers.origin || "";
+    const isLocal = /^https?:\/\/localhost(:\d+)?$/.test(origin);
+    const sameSite = isLocal ? "Lax" : "None";
+    const secureFlag = isLocal ? "" : "; Secure";
     res.setHeader(
       "Set-Cookie",
-      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}${isProduction ? "; Secure" : ""}`,
+      `token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}${secureFlag}`,
     );
 
     const redirectTo = ROLE_ROUTES[user.role] || "/admin/dashboard";
@@ -146,11 +146,13 @@ async function verifyLoginOtp(req, res) {
 }
 
 function logout(req, res) {
-  const isProduction = env.nodeEnv === "production";
-  const sameSite = isProduction ? "None" : "Lax";
+  const origin = req.headers.origin || "";
+  const isLocal = /^https?:\/\/localhost(:\d+)?$/.test(origin);
+  const sameSite = isLocal ? "Lax" : "None";
+  const secureFlag = isLocal ? "" : "; Secure";
   res.setHeader(
     "Set-Cookie",
-    `token=; HttpOnly; Path=/; Max-Age=0; SameSite=${sameSite}${isProduction ? "; Secure" : ""}`,
+    `token=; HttpOnly; Path=/; Max-Age=0; SameSite=${sameSite}${secureFlag}`,
   );
   return res.status(200).json({ success: true });
 }
